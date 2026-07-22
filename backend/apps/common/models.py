@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from django.db import models
+from django.utils import timezone
 
 
 class Invitation(models.Model):
@@ -14,6 +15,12 @@ class Invitation(models.Model):
 
         QUICK = "quick", "Quick"
         EXTENDED = "extended", "Extended"
+
+    class PublicationStatus(models.TextChoices):
+        """Visibility states for the public invitation capability."""
+
+        DRAFT = "draft", "Draft"
+        PUBLISHED = "published", "Published"
 
     class ResponseStatus(models.TextChoices):
         """Allowed lifecycle states for a recipient's response."""
@@ -31,6 +38,16 @@ class Invitation(models.Model):
         choices=CreationMode.choices,
         default=CreationMode.QUICK,
     )
+    publication_status = models.CharField(
+        max_length=9,
+        choices=PublicationStatus.choices,
+        default=PublicationStatus.PUBLISHED,
+    )
+    published_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        default=timezone.now,
+    )
     management_token_hash = models.CharField(
         max_length=64,
         blank=True,
@@ -47,9 +64,22 @@ class Invitation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        """Keep the response state and its timestamp consistent in the database."""
+        """Keep publication and response lifecycle timestamps consistent."""
 
         constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        publication_status="draft",
+                        published_at__isnull=True,
+                    )
+                    | models.Q(
+                        publication_status="published",
+                        published_at__isnull=False,
+                    )
+                ),
+                name="invitation_publication_state_consistent",
+            ),
             models.CheckConstraint(
                 condition=models.Q(creation_mode__in=("quick", "extended")),
                 name="invitation_creation_mode_valid",

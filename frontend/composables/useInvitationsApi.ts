@@ -38,6 +38,19 @@ export function useInvitationsApi() {
     )
   }
 
+  function publishInvitation(id: string, token: string): Promise<InvitationRecord> {
+    return $fetch<InvitationRecord>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/publish/`,
+      {
+        baseURL,
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+  }
+
   function saveInvitationResponse(
     id: string,
     payload: InvitationResponsePayload,
@@ -107,6 +120,7 @@ export function useInvitationsApi() {
     createInvitation,
     getManagedInvitation,
     getPublicInvitation,
+    publishInvitation,
     savePlanOptions,
     savePlanSelection,
     saveInvitationResponse,

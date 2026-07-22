@@ -48,6 +48,10 @@ def test_create_invitation_persists_and_returns_public_fields() -> None:
     assert body["recipient_name"] == invitation.recipient_name == "Борис"
     assert body["message"] == invitation.message == "Давай сходим на свидание?"
     assert body["creation_mode"] == invitation.creation_mode == Invitation.CreationMode.QUICK
+    assert body["publication_status"] == Invitation.PublicationStatus.PUBLISHED
+    assert invitation.publication_status == Invitation.PublicationStatus.PUBLISHED
+    assert body["published_at"]
+    assert invitation.published_at is not None
     assert body["created_at"]
     assert body["updated_at"]
     assert body["response_status"] == Invitation.ResponseStatus.PENDING
@@ -74,10 +78,21 @@ def test_create_invitation_persists_explicit_extended_mode() -> None:
     invitation = Invitation.objects.get(pk=body["id"])
     assert body["creation_mode"] == Invitation.CreationMode.EXTENDED
     assert invitation.creation_mode == Invitation.CreationMode.EXTENDED
+    assert body["publication_status"] == Invitation.PublicationStatus.DRAFT
+    assert body["published_at"] is None
+    assert invitation.publication_status == Invitation.PublicationStatus.DRAFT
+    assert invitation.published_at is None
 
     public_response = APIClient().get(f"/api/v1/invitations/{invitation.pk}/")
-    assert public_response.status_code == status.HTTP_200_OK
-    assert public_response.json()["creation_mode"] == Invitation.CreationMode.EXTENDED
+    assert public_response.status_code == status.HTTP_404_NOT_FOUND
+
+    management_response = APIClient().get(
+        f"/api/v1/invitations/{invitation.pk}/manage/",
+        HTTP_AUTHORIZATION=f"Bearer {body['management_token']}",
+    )
+    assert management_response.status_code == status.HTTP_200_OK
+    assert management_response.json()["creation_mode"] == Invitation.CreationMode.EXTENDED
+    assert management_response.json()["publication_status"] == Invitation.PublicationStatus.DRAFT
 
 
 @pytest.mark.parametrize("creation_mode", ["", "wizard", None])
@@ -117,6 +132,8 @@ def test_read_invitation_by_uuid() -> None:
         "id": str(invitation.pk),
         **invitation_payload(),
         "creation_mode": Invitation.CreationMode.QUICK,
+        "publication_status": Invitation.PublicationStatus.PUBLISHED,
+        "published_at": invitation.published_at.isoformat().replace("+00:00", "Z"),
         "response_status": Invitation.ResponseStatus.PENDING,
         "responded_at": None,
         "plan_options": [],
@@ -147,6 +164,23 @@ def test_server_now_input_is_ignored_and_never_persisted() -> None:
     invitation = Invitation.objects.get(pk=response.json()["id"])
     assert not hasattr(invitation, "server_now")
     assert "server_now" not in {field.name for field in Invitation._meta.get_fields()}
+
+
+def test_publication_fields_are_server_controlled() -> None:
+    """A caller cannot create a quick invitation as a hidden or predated record."""
+    response = APIClient().post(
+        "/api/v1/invitations/",
+        {
+            **invitation_payload(),
+            "publication_status": Invitation.PublicationStatus.DRAFT,
+            "published_at": "2000-01-01T00:00:00Z",
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.json()["publication_status"] == Invitation.PublicationStatus.PUBLISHED
+    assert response.json()["published_at"] != "2000-01-01T00:00:00Z"
 
 
 @pytest.mark.parametrize("field", ["author_name", "recipient_name"])

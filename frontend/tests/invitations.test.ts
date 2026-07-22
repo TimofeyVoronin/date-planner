@@ -5,8 +5,10 @@ import {
   buildPublicInvitationUrl,
   hasInvitationValidationErrors,
   getInvitationCreationModePresentation,
+  getInvitationPublicationPresentation,
   getInvitationResponsePresentation,
   isInvitationCreationMode,
+  isInvitationPublicationStatus,
   isInvitationId,
   isFinalInvitationResponseStatus,
   isInvitationResponseStatus,
@@ -185,6 +187,26 @@ describe('API error presentation', () => {
     expect(parseInvitationApiError({ response: { status: 403 } }).message).toContain(
       'Секретная ссылка',
     )
+  })
+})
+
+describe('invitation publication lifecycle', () => {
+  it('recognizes only draft and published states', () => {
+    expect(isInvitationPublicationStatus('draft')).toBe(true)
+    expect(isInvitationPublicationStatus('published')).toBe(true)
+    expect(isInvitationPublicationStatus('private')).toBe(false)
+    expect(isInvitationPublicationStatus(null)).toBe(false)
+  })
+
+  it('explains whether the recipient can open the invitation', () => {
+    expect(getInvitationPublicationPresentation('draft')).toMatchObject({
+      label: 'Черновик',
+      tone: 'draft',
+    })
+    expect(getInvitationPublicationPresentation('published')).toMatchObject({
+      label: 'Опубликовано',
+      tone: 'published',
+    })
   })
 })
 
