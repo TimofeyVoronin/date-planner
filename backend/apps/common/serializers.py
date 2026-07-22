@@ -53,6 +53,7 @@ class InvitationSerializer(serializers.ModelSerializer):
             "author_name",
             "recipient_name",
             "message",
+            "creation_mode",
             "response_status",
             "responded_at",
             "plan_options",
@@ -82,6 +83,13 @@ class InvitationSerializer(serializers.ModelSerializer):
                 "required": False,
                 "allow_blank": True,
                 "trim_whitespace": True,
+            },
+            "creation_mode": {
+                "required": False,
+                "help_text": (
+                    "The authoring flow: quick creates the current compact invitation, "
+                    "while extended reserves the invitation for the guided builder."
+                ),
             },
         }
 

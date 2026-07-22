@@ -1,7 +1,9 @@
 import {
+  INVITATION_CREATION_MODES,
   INVITATION_MESSAGE_MAX_LENGTH,
   INVITATION_NAME_MAX_LENGTH,
   type InvitationCreatePayload,
+  type InvitationCreationMode,
   type InvitationField,
   type FinalInvitationResponseStatus,
   type InvitationResponseStatus,
@@ -15,6 +17,13 @@ export type InvitationApiError = {
   status: number | null
 }
 
+export type InvitationCreationModePresentation = {
+  description: string
+  icon: string
+  label: string
+  submitLabel: string
+}
+
 export type InvitationResponsePresentation = {
   description: string
   icon: string
@@ -24,7 +33,12 @@ export type InvitationResponsePresentation = {
 
 type UnknownRecord = Record<string, unknown>
 
-const INVITATION_FIELDS: InvitationField[] = ['author_name', 'recipient_name', 'message']
+const INVITATION_FIELDS: InvitationField[] = [
+  'creation_mode',
+  'author_name',
+  'recipient_name',
+  'message',
+]
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -87,6 +101,7 @@ export function normalizeInvitationPayload(
     author_name: payload.author_name.trim(),
     recipient_name: payload.recipient_name.trim(),
     message: payload.message.trim(),
+    creation_mode: payload.creation_mode,
   }
 }
 
@@ -95,6 +110,10 @@ export function validateInvitationPayload(
 ): InvitationValidationErrors {
   const normalized = normalizeInvitationPayload(payload)
   const errors: InvitationValidationErrors = {}
+
+  if (!isInvitationCreationMode(normalized.creation_mode)) {
+    errors.creation_mode = 'Выбери быстрый или расширенный режим.'
+  }
 
   if (!normalized.author_name) {
     errors.author_name = 'Напиши, от кого приглашение.'
@@ -152,6 +171,30 @@ export function managementTokenSessionKey(id: string): string {
 
 export function isInvitationId(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
+export function isInvitationCreationMode(value: unknown): value is InvitationCreationMode {
+  return INVITATION_CREATION_MODES.some(mode => mode === value)
+}
+
+export function getInvitationCreationModePresentation(
+  mode: InvitationCreationMode,
+): InvitationCreationModePresentation {
+  if (mode === 'extended') {
+    return {
+      icon: '✨',
+      label: 'Расширенное приглашение',
+      description: 'Основа для пошаговой настройки экранов, дат и активностей.',
+      submitLabel: 'Создать основу приглашения',
+    }
+  }
+
+  return {
+    icon: '⚡',
+    label: 'Быстрое приглашение',
+    description: 'Сразу получи ссылку, а дату и место согласуйте после ответа.',
+    submitLabel: 'Создать приглашение',
+  }
 }
 
 export function isInvitationResponseStatus(value: unknown): value is InvitationResponseStatus {

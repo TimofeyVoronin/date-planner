@@ -578,6 +578,131 @@ button {
   gap: 20px;
 }
 
+.creation-mode-fieldset {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.creation-mode-fieldset > legend {
+  padding: 0;
+  margin-bottom: 9px;
+  color: #543044;
+  font-size: .84rem;
+  font-weight: 800;
+}
+
+.creation-mode-options {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.creation-mode-option {
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.creation-mode-option__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.creation-mode-option__surface {
+  position: relative;
+  display: grid;
+  min-height: 142px;
+  padding: 17px 16px;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid #ead1da;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #fff, #fff8fb);
+  box-shadow: 0 8px 20px rgb(98 43 67 / 5%);
+  transition:
+    border-color .18s ease,
+    box-shadow .18s ease,
+    transform .18s ease,
+    background-color .18s ease;
+}
+
+.creation-mode-option:hover .creation-mode-option__surface {
+  border-color: #dfa0b5;
+  transform: translateY(-1px);
+}
+
+.creation-mode-option__input:checked + .creation-mode-option__surface {
+  border-color: #d95780;
+  background: linear-gradient(145deg, #fffafd, #fff0f5);
+  box-shadow: 0 0 0 3px rgb(217 87 128 / 12%);
+}
+
+.creation-mode-option__input:focus-visible + .creation-mode-option__surface {
+  outline: 4px solid rgb(76 39 56 / 25%);
+  outline-offset: 3px;
+}
+
+.creation-mode-option__icon {
+  display: grid;
+  width: 35px;
+  height: 35px;
+  place-items: center;
+  border-radius: 12px;
+  background: #fff0f5;
+  font-size: 1.05rem;
+}
+
+.creation-mode-option__copy {
+  display: grid;
+  gap: 5px;
+}
+
+.creation-mode-option__copy strong {
+  color: #4b2739;
+  font-size: .91rem;
+}
+
+.creation-mode-option__copy > span {
+  color: #866675;
+  font-size: .74rem;
+  line-height: 1.45;
+}
+
+.creation-mode-option__check {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  color: #fff;
+  border-radius: 50%;
+  background: #d95780;
+  font-size: .7rem;
+  font-weight: 900;
+  opacity: 0;
+  transform: scale(.75);
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+.creation-mode-option__input:checked
+  + .creation-mode-option__surface
+  .creation-mode-option__check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.creation-mode-fieldset > .form-field__hint,
+.creation-mode-fieldset > .form-field__error {
+  display: block;
+}
+
 .invitation-form__names {
   display: grid;
   gap: 16px;
@@ -783,6 +908,20 @@ button {
   margin: 2px 0 0;
   color: #806171;
   font-size: .8rem;
+}
+
+.created-invitation__mode {
+  display: inline-flex;
+  padding: 5px 9px;
+  margin-top: 8px;
+  align-items: center;
+  gap: 5px;
+  color: #8f3f5c;
+  border: 1px solid rgb(217 87 128 / 16%);
+  border-radius: 999px;
+  background: #fff2f6;
+  font-size: .68rem;
+  font-weight: 800;
 }
 
 .created-link + .created-link {
@@ -2042,9 +2181,14 @@ button {
     border-radius: 25px;
   }
 
+  .creation-mode-options,
   .invitation-form__names,
   .manage-card__details {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .creation-mode-option__surface {
+    min-height: 0;
   }
 
   .manage-card__message {

@@ -9,6 +9,7 @@ import { useExpiryClock } from '../../../composables/useExpiryClock'
 import type { InvitationRecord, PlanOptionsPayload } from '../../../types/invitation'
 import {
   buildPublicInvitationUrl,
+  getInvitationCreationModePresentation,
   getInvitationResponsePresentation,
   isInvitationId,
   parseInvitationApiError,
@@ -52,6 +53,9 @@ const { clearManagementToken, takeManagementToken } = useManagementToken(invitat
 const { currentTime, refreshCurrentTime, synchronizeServerTime } = useExpiryClock()
 const responsePresentation = computed(() => getInvitationResponsePresentation(
   invitation.value?.response_status ?? 'pending',
+))
+const creationModePresentation = computed(() => getInvitationCreationModePresentation(
+  invitation.value?.creation_mode ?? 'quick',
 ))
 const selectedPlanOption = computed(() => findSelectedPlanOption(
   invitation.value?.plan_options ?? [],
@@ -532,6 +536,12 @@ onMounted(loadManagedInvitation)
             <div v-if="invitation.message.trim()" class="manage-card__message">
               <dt>Сообщение</dt>
               <dd>{{ invitation.message }}</dd>
+            </div>
+            <div>
+              <dt>Режим</dt>
+              <dd>
+                {{ creationModePresentation.icon }} {{ creationModePresentation.label }}
+              </dd>
             </div>
             <div>
               <dt>Создано</dt>

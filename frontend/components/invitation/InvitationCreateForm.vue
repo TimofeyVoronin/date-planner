@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue'
 import { copyTextWithFallback } from '../../composables/useClipboard'
 import { useInvitationsApi } from '../../composables/useInvitationsApi'
 import {
+  INVITATION_CREATION_MODES,
   INVITATION_MESSAGE_MAX_LENGTH,
   INVITATION_NAME_MAX_LENGTH,
   type InvitationCreatePayload,
+  type InvitationCreationMode,
   type InvitationValidationErrors,
 } from '../../types/invitation'
 import {
   buildManagementInvitationUrl,
   buildPublicInvitationUrl,
+  getInvitationCreationModePresentation,
   hasInvitationValidationErrors,
   normalizeInvitationPayload,
   parseInvitationApiError,
@@ -21,6 +24,7 @@ type CopyTarget = 'management' | 'public'
 type CopyState = 'idle' | 'copied' | 'failed'
 
 type CreatedLinks = {
+  creationMode: InvitationCreationMode
   management: string
   public: string
 }
@@ -30,12 +34,17 @@ const form = reactive<InvitationCreatePayload>({
   author_name: '',
   recipient_name: '',
   message: '',
+  creation_mode: 'quick',
 })
 const validationErrors = ref<InvitationValidationErrors>({})
 const requestError = ref('')
 const isSubmitting = ref(false)
 const createdLinks = ref<CreatedLinks | null>(null)
 const statusHeadingRef = ref<HTMLElement | null>(null)
+const creationModes = INVITATION_CREATION_MODES
+const selectedModePresentation = computed(() => (
+  getInvitationCreationModePresentation(form.creation_mode)
+))
 const copyState = reactive<Record<CopyTarget, CopyState>>({
   management: 'idle',
   public: 'idle',
@@ -75,6 +84,7 @@ async function submitInvitation(): Promise<void> {
     const origin = window.location.origin
 
     createdLinks.value = {
+      creationMode: invitation.creation_mode,
       public: buildPublicInvitationUrl(origin, invitation.id),
       management: buildManagementInvitationUrl(
         origin,
@@ -116,6 +126,52 @@ async function copyLink(target: CopyTarget): Promise<void> {
     </div>
 
     <form class="invitation-form" novalidate @submit.prevent="submitInvitation">
+      <fieldset
+        class="creation-mode-fieldset"
+        :aria-describedby="fieldDescription(
+          'creation-mode-hint',
+          validationErrors.creation_mode && 'creation-mode-error',
+        )"
+      >
+        <legend>Как хочешь создать приглашение?</legend>
+        <div class="creation-mode-options">
+          <label
+            v-for="mode in creationModes"
+            :key="mode"
+            class="creation-mode-option"
+          >
+            <input
+              v-model="form.creation_mode"
+              class="creation-mode-option__input"
+              type="radio"
+              name="creation_mode"
+              :value="mode"
+            >
+            <span class="creation-mode-option__surface">
+              <span class="creation-mode-option__icon" aria-hidden="true">
+                {{ getInvitationCreationModePresentation(mode).icon }}
+              </span>
+              <span class="creation-mode-option__copy">
+                <strong>{{ getInvitationCreationModePresentation(mode).label }}</strong>
+                <span>{{ getInvitationCreationModePresentation(mode).description }}</span>
+              </span>
+              <span class="creation-mode-option__check" aria-hidden="true">✓</span>
+            </span>
+          </label>
+        </div>
+        <span id="creation-mode-hint" class="form-field__hint">
+          Режим сохраняется вместе с приглашением. Позже его нельзя будет подменить через
+          публичную ссылку.
+        </span>
+        <span
+          v-if="validationErrors.creation_mode"
+          id="creation-mode-error"
+          class="form-field__error"
+        >
+          {{ validationErrors.creation_mode }}
+        </span>
+      </fieldset>
+
       <div class="invitation-form__names">
         <div class="form-field">
           <label for="author-name">Твоё имя</label>
@@ -200,7 +256,7 @@ async function copyLink(target: CopyTarget): Promise<void> {
 
       <button class="invitation-form__submit" type="submit" :disabled="isSubmitting">
         <span aria-hidden="true">{{ isSubmitting ? '⏳' : '💌' }}</span>
-        {{ isSubmitting ? 'Создаём приглашение…' : 'Создать приглашение' }}
+        {{ isSubmitting ? 'Создаём приглашение…' : selectedModePresentation.submitLabel }}
       </button>
     </form>
 
@@ -227,6 +283,10 @@ async function copyLink(target: CopyTarget): Promise<void> {
         <div>
           <h3 id="created-invitation-title">Приглашение готово</h3>
           <p>Отправь получателю только первую ссылку.</p>
+          <span class="created-invitation__mode">
+            {{ getInvitationCreationModePresentation(createdLinks.creationMode).icon }}
+            {{ getInvitationCreationModePresentation(createdLinks.creationMode).label }}
+          </span>
         </div>
       </div>
 

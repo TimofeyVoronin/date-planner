@@ -9,6 +9,12 @@ from django.db import models
 class Invitation(models.Model):
     """A personal invitation that can be shared through an unguessable UUID."""
 
+    class CreationMode(models.TextChoices):
+        """Supported authoring flows for an invitation."""
+
+        QUICK = "quick", "Quick"
+        EXTENDED = "extended", "Extended"
+
     class ResponseStatus(models.TextChoices):
         """Allowed lifecycle states for a recipient's response."""
 
@@ -20,6 +26,11 @@ class Invitation(models.Model):
     author_name = models.CharField(max_length=100)
     recipient_name = models.CharField(max_length=100)
     message = models.TextField(max_length=1000, blank=True, default="")
+    creation_mode = models.CharField(
+        max_length=8,
+        choices=CreationMode.choices,
+        default=CreationMode.QUICK,
+    )
     management_token_hash = models.CharField(
         max_length=64,
         blank=True,
@@ -40,6 +51,10 @@ class Invitation(models.Model):
 
         constraints = [
             models.CheckConstraint(
+                condition=models.Q(creation_mode__in=("quick", "extended")),
+                name="invitation_creation_mode_valid",
+            ),
+            models.CheckConstraint(
                 condition=(
                     models.Q(
                         response_status="pending",
@@ -54,7 +69,7 @@ class Invitation(models.Model):
                     )
                 ),
                 name="invitation_response_state_consistent",
-            )
+            ),
         ]
 
     @property

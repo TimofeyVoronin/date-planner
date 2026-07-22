@@ -4,7 +4,9 @@ import {
   buildManagementInvitationUrl,
   buildPublicInvitationUrl,
   hasInvitationValidationErrors,
+  getInvitationCreationModePresentation,
   getInvitationResponsePresentation,
+  isInvitationCreationMode,
   isInvitationId,
   isFinalInvitationResponseStatus,
   isInvitationResponseStatus,
@@ -23,6 +25,7 @@ const validPayload: InvitationCreatePayload = {
   author_name: 'Алиса',
   recipient_name: 'Борис',
   message: 'Давай сходим на свидание?',
+  creation_mode: 'quick',
 }
 
 describe('invitation form helpers', () => {
@@ -31,12 +34,14 @@ describe('invitation form helpers', () => {
       author_name: '  Алиса ',
       recipient_name: ' Борис  ',
       message: '  Увидимся вечером?\n ',
+      creation_mode: 'extended' as const,
     }
 
     expect(normalizeInvitationPayload(draft)).toEqual({
       author_name: 'Алиса',
       recipient_name: 'Борис',
       message: 'Увидимся вечером?',
+      creation_mode: 'extended',
     })
     expect(draft.author_name).toBe('  Алиса ')
   })
@@ -53,6 +58,7 @@ describe('invitation form helpers', () => {
       author_name: ' ',
       recipient_name: '\n',
       message: '   ',
+      creation_mode: 'quick',
     })
 
     expect(errors.author_name).toBeTruthy()
@@ -66,6 +72,7 @@ describe('invitation form helpers', () => {
       author_name: 'A'.repeat(101),
       recipient_name: 'R'.repeat(101),
       message: 'M'.repeat(1001),
+      creation_mode: 'quick',
     })
 
     expect(errors.author_name).toContain('100')
@@ -78,7 +85,36 @@ describe('invitation form helpers', () => {
       author_name: 'A'.repeat(100),
       recipient_name: 'R'.repeat(100),
       message: 'M'.repeat(1000),
+      creation_mode: 'extended',
     })).toEqual({})
+  })
+
+  it('recognizes and presents both creation modes', () => {
+    expect(isInvitationCreationMode('quick')).toBe(true)
+    expect(isInvitationCreationMode('extended')).toBe(true)
+    expect(isInvitationCreationMode('wizard')).toBe(false)
+    expect(isInvitationCreationMode(null)).toBe(false)
+
+    expect(getInvitationCreationModePresentation('quick')).toMatchObject({
+      label: 'Быстрое приглашение',
+      submitLabel: 'Создать приглашение',
+    })
+    expect(getInvitationCreationModePresentation('extended')).toMatchObject({
+      label: 'Расширенное приглашение',
+      submitLabel: 'Создать основу приглашения',
+    })
+  })
+
+  it('reports a missing runtime creation mode before sending the payload', () => {
+    const malformedPayload = {
+      ...validPayload,
+      creation_mode: 'wizard',
+    } as unknown as InvitationCreatePayload
+
+    const errors = validateInvitationPayload(malformedPayload)
+
+    expect(errors.creation_mode).toContain('режим')
+    expect(hasInvitationValidationErrors(errors)).toBe(true)
   })
 })
 
@@ -128,6 +164,7 @@ describe('API error presentation', () => {
       response: {
         status: 400,
         _data: {
+          creation_mode: ['Недопустимый режим создания.'],
           author_name: ['Это поле обязательно.'],
           message: ['Убедитесь, что это значение содержит не более 1000 символов.'],
         },
@@ -136,6 +173,7 @@ describe('API error presentation', () => {
 
     expect(parsed.message).toBe('Проверь заполненные поля.')
     expect(parsed.fieldErrors).toEqual({
+      creation_mode: 'Недопустимый режим создания.',
       author_name: 'Это поле обязательно.',
       message: 'Убедитесь, что это значение содержит не более 1000 символов.',
     })
