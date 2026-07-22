@@ -10,6 +10,7 @@ import type { InvitationRecord, PlanOptionsPayload } from '../../../types/invita
 import {
   buildPublicInvitationUrl,
   getInvitationCreationModePresentation,
+  getInvitationPublicationPresentation,
   getInvitationResponsePresentation,
   isInvitationId,
   parseInvitationApiError,
@@ -30,6 +31,7 @@ type PageState = 'error' | 'loading' | 'missing-token' | 'ready'
 type StatusRefreshState = 'error' | 'idle' | 'loading' | 'success'
 type PlanSaveState = 'error' | 'idle' | 'saving' | 'success'
 type ConfirmationActionState = 'error' | 'idle' | 'saving'
+type PublicationActionState = 'error' | 'idle' | 'publishing'
 
 const route = useRoute()
 const api = useInvitationsApi()
@@ -47,6 +49,9 @@ const confirmationActionState = ref<ConfirmationActionState>('idle')
 const confirmationError = ref('')
 const confirmationConflict = ref(false)
 const confirmationJustCompleted = ref(false)
+const publicationActionState = ref<PublicationActionState>('idle')
+const publicationError = ref('')
+const publicationJustCompleted = ref(false)
 const serverExpiredSelectionId = ref<string | null>(null)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const { clearManagementToken, takeManagementToken } = useManagementToken(invitationId)
@@ -56,6 +61,9 @@ const responsePresentation = computed(() => getInvitationResponsePresentation(
 ))
 const creationModePresentation = computed(() => getInvitationCreationModePresentation(
   invitation.value?.creation_mode ?? 'quick',
+))
+const publicationPresentation = computed(() => getInvitationPublicationPresentation(
+  invitation.value?.publication_status ?? 'draft',
 ))
 const selectedPlanOption = computed(() => findSelectedPlanOption(
   invitation.value?.plan_options ?? [],
@@ -115,6 +123,9 @@ async function loadManagedInvitation(): Promise<void> {
     confirmationError.value = ''
     confirmationConflict.value = false
     confirmationJustCompleted.value = false
+    publicationActionState.value = 'idle'
+    publicationError.value = ''
+    publicationJustCompleted.value = false
     pageState.value = 'ready'
   }
   catch (error: unknown) {
@@ -127,6 +138,48 @@ async function loadManagedInvitation(): Promise<void> {
 
     errorMessage.value = parsedError.message
     pageState.value = 'error'
+  }
+}
+
+async function publishDraft(): Promise<void> {
+  if (
+    publicationActionState.value === 'publishing'
+    || invitation.value?.publication_status !== 'draft'
+  ) {
+    return
+  }
+
+  const token = takeManagementToken()
+
+  if (!token) {
+    pageState.value = 'missing-token'
+    return
+  }
+
+  publicationActionState.value = 'publishing'
+  publicationError.value = ''
+  publicationJustCompleted.value = false
+
+  try {
+    const nextInvitation = await api.publishInvitation(invitationId.value, token)
+
+    applyManagedInvitation(nextInvitation)
+    publicationActionState.value = 'idle'
+    publicationJustCompleted.value = true
+  }
+  catch (error: unknown) {
+    const parsedError = parseInvitationApiError(error)
+
+    if (parsedError.status === 401 || parsedError.status === 403) {
+      clearManagementToken()
+      canRetry.value = false
+      errorMessage.value = parsedError.message
+      pageState.value = 'error'
+      return
+    }
+
+    publicationError.value = parsedError.message
+    publicationActionState.value = 'error'
   }
 }
 
@@ -357,154 +410,216 @@ onMounted(loadManagedInvitation)
 
         <article class="manage-card">
           <section
-            class="response-overview"
-            :class="`response-overview--${responsePresentation.tone}`"
-            aria-labelledby="response-overview-title"
+            class="publication-overview"
+            :class="`publication-overview--${publicationPresentation.tone}`"
+            aria-labelledby="publication-overview-title"
+            :aria-busy="publicationActionState === 'publishing'"
           >
-            <span class="response-overview__icon" aria-hidden="true">
-              {{ responsePresentation.icon }}
+            <span class="publication-overview__icon" aria-hidden="true">
+              {{ publicationPresentation.icon }}
             </span>
-            <div class="response-overview__copy">
-              <p>Текущий ответ</p>
-              <h2 id="response-overview-title">{{ responsePresentation.label }}</h2>
-              <span>{{ responsePresentation.description }}</span>
+            <div class="publication-overview__copy">
+              <p>Доступ получателю</p>
+              <h2 id="publication-overview-title">{{ publicationPresentation.label }}</h2>
+              <span>{{ publicationPresentation.description }}</span>
               <time
-                v-if="invitation.responded_at"
-                :datetime="invitation.responded_at"
+                v-if="invitation.published_at"
+                :datetime="invitation.published_at"
               >
-                Получен: {{ formatDate(invitation.responded_at) }}
+                Опубликовано: {{ formatDate(invitation.published_at) }}
               </time>
-              <span v-else>Время ответа появится после выбора получателя.</span>
             </div>
             <button
+              v-if="invitation.publication_status === 'draft'"
               type="button"
-              :disabled="statusRefreshState === 'loading'
-                || confirmationActionState === 'saving'"
-              aria-label="Загрузить актуальный ответ получателя"
-              @click="refreshResponseStatus"
-            >
-              {{ statusRefreshState === 'loading' ? 'Обновляем…' : 'Обновить статус' }}
-            </button>
-            <p
-              v-if="statusRefreshState === 'success'"
-              class="response-overview__refresh-message response-overview__refresh-message--success"
-              role="status"
-            >
-              Статус обновлён.
-            </p>
-            <p
-              v-else-if="statusRefreshState === 'error'"
-              class="response-overview__refresh-message response-overview__refresh-message--error"
-              role="alert"
-            >
-              {{ statusRefreshError }}
-            </p>
-          </section>
-
-          <template v-if="confirmationStage === 'confirmed'">
-            <FinalPlanCard
-              v-if="selectedPlanOption && invitation.confirmed_at"
-              :announce="confirmationJustCompleted"
-              :confirmed-at="invitation.confirmed_at"
-              :option="selectedPlanOption"
-            />
-            <section v-else class="plan-data-error" role="alert">
-              Подтверждённый план не удалось загрузить. Обнови данные страницы.
-            </section>
-          </template>
-
-          <section
-            v-else-if="confirmationStage === 'ready'"
-            class="plan-confirmation"
-            aria-labelledby="plan-confirmation-title"
-            :aria-busy="confirmationActionState === 'saving' || statusRefreshState === 'loading'"
-          >
-            <header>
-              <span aria-hidden="true">💞</span>
-              <div>
-                <p>Финальный шаг автора</p>
-                <h2 id="plan-confirmation-title">Подтверди выбранный план</h2>
-              </div>
-            </header>
-
-            <div v-if="selectedPlanOption" class="plan-confirmation__summary">
-              <time :datetime="selectedPlanOption.starts_at">
-                {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}
-              </time>
-              <strong>{{ selectedPlanOption.place }}</strong>
-              <span v-if="selectedPlanOption.comment">{{ selectedPlanOption.comment }}</span>
-              <small v-if="invitation.selected_at">
-                Получатель выбрал {{ formatDate(invitation.selected_at) }}
-              </small>
-            </div>
-            <p v-else class="plan-data-error" role="alert">
-              Выбранный вариант не найден. Обнови данные перед подтверждением.
-            </p>
-
-            <p id="plan-confirmation-warning" class="plan-confirmation__warning">
-              <span aria-hidden="true">⚠️</span>
-              <strong>Это действие необратимо.</strong>
-              После подтверждения получатель больше не сможет менять вариант.
-            </p>
-
-            <p
-              v-if="confirmationActionState === 'error'"
-              class="plan-confirmation__error"
-              role="alert"
-            >
-              {{ confirmationError }}
-            </p>
-
-            <button
-              v-if="confirmationConflict"
-              type="button"
-              :disabled="statusRefreshState === 'loading'
-                || confirmationActionState === 'saving'"
-              @click="refreshResponseStatus"
-            >
-              {{ statusRefreshState === 'loading' ? 'Обновляем данные…' : 'Обновить данные' }}
-            </button>
-            <button
-              v-else
-              type="button"
-              aria-describedby="plan-confirmation-warning"
-              :disabled="confirmationActionState === 'saving'
-                || statusRefreshState === 'loading'
-                || !selectedPlanOption"
-              @click="confirmSelectedPlan"
+              :disabled="publicationActionState === 'publishing'"
+              @click="publishDraft"
             >
               <span aria-hidden="true">
-                {{ confirmationActionState === 'saving' ? '⏳' : '✓' }}
+                {{ publicationActionState === 'publishing' ? '⏳' : '💌' }}
               </span>
-              {{ confirmationActionState === 'saving'
-                ? 'Подтверждаем план…'
-                : 'Подтвердить окончательно' }}
+              {{ publicationActionState === 'publishing'
+                ? 'Публикуем…'
+                : 'Опубликовать приглашение' }}
             </button>
-          </section>
-
-          <template v-else-if="confirmationStage === 'expired'">
-            <section
-              class="plan-recovery"
-              aria-labelledby="plan-recovery-title"
+            <p
+              v-if="publicationActionState === 'error'"
+              class="publication-overview__message publication-overview__message--error"
+              role="alert"
+            >
+              {{ publicationError }}
+            </p>
+            <p
+              v-else-if="publicationJustCompleted"
+              class="publication-overview__message publication-overview__message--success"
               role="status"
               aria-live="polite"
             >
-              <span class="plan-recovery__icon" aria-hidden="true">🕰️</span>
-              <div>
-                <p>Нужно обновить план</p>
-                <h2 id="plan-recovery-title">Время выбранного варианта уже прошло</h2>
-                <p v-if="selectedPlanOption">
-                  Получатель выбирал «{{ selectedPlanOption.place }}» —
-                  {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}.
-                </p>
-                <p>
-                  Исправь даты или предложи новый набор ниже. Сохранение заменит устаревшие
-                  варианты и сбросит прежний выбор, чтобы получатель мог выбрать снова.
-                </p>
+              Приглашение опубликовано. Теперь публичную ссылку можно отправлять получателю.
+            </p>
+          </section>
+
+          <template v-if="invitation.publication_status === 'published'">
+            <section
+              class="response-overview"
+              :class="`response-overview--${responsePresentation.tone}`"
+              aria-labelledby="response-overview-title"
+            >
+              <span class="response-overview__icon" aria-hidden="true">
+                {{ responsePresentation.icon }}
+              </span>
+              <div class="response-overview__copy">
+                <p>Текущий ответ</p>
+                <h2 id="response-overview-title">{{ responsePresentation.label }}</h2>
+                <span>{{ responsePresentation.description }}</span>
+                <time
+                  v-if="invitation.responded_at"
+                  :datetime="invitation.responded_at"
+                >
+                  Получен: {{ formatDate(invitation.responded_at) }}
+                </time>
+                <span v-else>Время ответа появится после выбора получателя.</span>
               </div>
+              <button
+                type="button"
+                :disabled="statusRefreshState === 'loading'
+                  || confirmationActionState === 'saving'"
+                aria-label="Загрузить актуальный ответ получателя"
+                @click="refreshResponseStatus"
+              >
+                {{ statusRefreshState === 'loading' ? 'Обновляем…' : 'Обновить статус' }}
+              </button>
+              <p
+                v-if="statusRefreshState === 'success'"
+                class="response-overview__refresh-message response-overview__refresh-message--success"
+                role="status"
+              >
+                Статус обновлён.
+              </p>
+              <p
+                v-else-if="statusRefreshState === 'error'"
+                class="response-overview__refresh-message response-overview__refresh-message--error"
+                role="alert"
+              >
+                {{ statusRefreshError }}
+              </p>
             </section>
 
+            <template v-if="confirmationStage === 'confirmed'">
+              <FinalPlanCard
+                v-if="selectedPlanOption && invitation.confirmed_at"
+                :announce="confirmationJustCompleted"
+                :confirmed-at="invitation.confirmed_at"
+                :option="selectedPlanOption"
+              />
+              <section v-else class="plan-data-error" role="alert">
+                Подтверждённый план не удалось загрузить. Обнови данные страницы.
+              </section>
+            </template>
+
+            <section
+              v-else-if="confirmationStage === 'ready'"
+              class="plan-confirmation"
+              aria-labelledby="plan-confirmation-title"
+              :aria-busy="confirmationActionState === 'saving' || statusRefreshState === 'loading'"
+            >
+              <header>
+                <span aria-hidden="true">💞</span>
+                <div>
+                  <p>Финальный шаг автора</p>
+                  <h2 id="plan-confirmation-title">Подтверди выбранный план</h2>
+                </div>
+              </header>
+
+              <div v-if="selectedPlanOption" class="plan-confirmation__summary">
+                <time :datetime="selectedPlanOption.starts_at">
+                  {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}
+                </time>
+                <strong>{{ selectedPlanOption.place }}</strong>
+                <span v-if="selectedPlanOption.comment">{{ selectedPlanOption.comment }}</span>
+                <small v-if="invitation.selected_at">
+                  Получатель выбрал {{ formatDate(invitation.selected_at) }}
+                </small>
+              </div>
+              <p v-else class="plan-data-error" role="alert">
+                Выбранный вариант не найден. Обнови данные перед подтверждением.
+              </p>
+
+              <p id="plan-confirmation-warning" class="plan-confirmation__warning">
+                <span aria-hidden="true">⚠️</span>
+                <strong>Это действие необратимо.</strong>
+                После подтверждения получатель больше не сможет менять вариант.
+              </p>
+
+              <p
+                v-if="confirmationActionState === 'error'"
+                class="plan-confirmation__error"
+                role="alert"
+              >
+                {{ confirmationError }}
+              </p>
+
+              <button
+                v-if="confirmationConflict"
+                type="button"
+                :disabled="statusRefreshState === 'loading'
+                  || confirmationActionState === 'saving'"
+                @click="refreshResponseStatus"
+              >
+                {{ statusRefreshState === 'loading' ? 'Обновляем данные…' : 'Обновить данные' }}
+              </button>
+              <button
+                v-else
+                type="button"
+                aria-describedby="plan-confirmation-warning"
+                :disabled="confirmationActionState === 'saving'
+                  || statusRefreshState === 'loading'
+                  || !selectedPlanOption"
+                @click="confirmSelectedPlan"
+              >
+                <span aria-hidden="true">
+                  {{ confirmationActionState === 'saving' ? '⏳' : '✓' }}
+                </span>
+                {{ confirmationActionState === 'saving'
+                  ? 'Подтверждаем план…'
+                  : 'Подтвердить окончательно' }}
+              </button>
+            </section>
+
+            <template v-else-if="confirmationStage === 'expired'">
+              <section
+                class="plan-recovery"
+                aria-labelledby="plan-recovery-title"
+                role="status"
+                aria-live="polite"
+              >
+                <span class="plan-recovery__icon" aria-hidden="true">🕰️</span>
+                <div>
+                  <p>Нужно обновить план</p>
+                  <h2 id="plan-recovery-title">Время выбранного варианта уже прошло</h2>
+                  <p v-if="selectedPlanOption">
+                    Получатель выбирал «{{ selectedPlanOption.place }}» —
+                    {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}.
+                  </p>
+                  <p>
+                    Исправь даты или предложи новый набор ниже. Сохранение заменит устаревшие
+                    варианты и сбросит прежний выбор, чтобы получатель мог выбрать снова.
+                  </p>
+                </div>
+              </section>
+
+              <PlanOptionsEditor
+                :current-time="currentTime"
+                :options="invitation.plan_options"
+                :save-error="planSaveError"
+                :save-state="planSaveState"
+                @dirty="markPlanDirty"
+                @save="savePlanningOptions"
+              />
+            </template>
+
             <PlanOptionsEditor
+              v-else-if="invitation.response_status === 'accepted'"
               :current-time="currentTime"
               :options="invitation.plan_options"
               :save-error="planSaveError"
@@ -513,16 +628,6 @@ onMounted(loadManagedInvitation)
               @save="savePlanningOptions"
             />
           </template>
-
-          <PlanOptionsEditor
-            v-else-if="invitation.response_status === 'accepted'"
-            :current-time="currentTime"
-            :options="invitation.plan_options"
-            :save-error="planSaveError"
-            :save-state="planSaveState"
-            @dirty="markPlanDirty"
-            @save="savePlanningOptions"
-          />
 
           <dl class="manage-card__details">
             <div>
@@ -544,12 +649,16 @@ onMounted(loadManagedInvitation)
               </dd>
             </div>
             <div>
+              <dt>Статус публикации</dt>
+              <dd>{{ publicationPresentation.icon }} {{ publicationPresentation.label }}</dd>
+            </div>
+            <div>
               <dt>Создано</dt>
               <dd>{{ formatDate(invitation.created_at) }}</dd>
             </div>
           </dl>
 
-          <div class="created-link">
+          <div v-if="invitation.publication_status === 'published'" class="created-link">
             <label for="managed-public-link">Ссылка для получателя</label>
             <div class="created-link__controls">
               <input id="managed-public-link" :value="publicUrl" type="text" readonly>
@@ -571,6 +680,10 @@ onMounted(loadManagedInvitation)
               {{ copyStatus === 'copied' ? 'Публичная ссылка скопирована.' : '' }}
             </span>
           </div>
+          <p v-else class="manage-card__draft-notice" role="status">
+            <span aria-hidden="true">📝</span>
+            Публичная ссылка закрыта, пока приглашение находится в черновиках.
+          </p>
 
           <p class="manage-card__notice">
             <span aria-hidden="true">🔐</span>

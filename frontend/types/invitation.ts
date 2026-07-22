@@ -5,8 +5,10 @@ export const PLAN_OPTION_COMMENT_MAX_LENGTH = 500
 export const MIN_PLAN_OPTIONS = 2
 export const MAX_PLAN_OPTIONS = 5
 export const INVITATION_CREATION_MODES = ['quick', 'extended'] as const
+export const INVITATION_PUBLICATION_STATUSES = ['draft', 'published'] as const
 
 export type InvitationCreationMode = typeof INVITATION_CREATION_MODES[number]
+export type InvitationPublicationStatus = typeof INVITATION_PUBLICATION_STATUSES[number]
 export type InvitationResponseStatus = 'pending' | 'accepted' | 'declined'
 export type FinalInvitationResponseStatus = Exclude<InvitationResponseStatus, 'pending'>
 
@@ -47,6 +49,8 @@ export type PlanConfirmationPayload = {
 export type InvitationRecord = InvitationCreatePayload & {
   id: string
   server_now: string
+  publication_status: InvitationPublicationStatus
+  published_at: string | null
   response_status: InvitationResponseStatus
   responded_at: string | null
   plan_options: InvitationPlanOption[]

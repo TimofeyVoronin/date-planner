@@ -123,7 +123,9 @@ class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
 class InvitationSelectionView(NoStoreResponseMixin, generics.GenericAPIView):
     """Store the recipient's current option selection through the public UUID."""
 
-    queryset = Invitation.objects.select_for_update()
+    queryset = Invitation.objects.filter(
+        publication_status=Invitation.PublicationStatus.PUBLISHED,
+    ).select_for_update()
     serializer_class = InvitationSelectionUpdateSerializer
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -155,12 +157,11 @@ class InvitationSelectionView(NoStoreResponseMixin, generics.GenericAPIView):
     )
     def put(self, request: Request, *args: object, **kwargs: object) -> Response:
         """Select or replace one option, leaving exact retries idempotent."""
-        input_serializer = self.get_serializer(data=request.data)
-        input_serializer.is_valid(raise_exception=True)
-        option_id = input_serializer.validated_data["option_id"]
-
         with transaction.atomic():
             invitation = self.get_object()
+            input_serializer = self.get_serializer(data=request.data)
+            input_serializer.is_valid(raise_exception=True)
+            option_id = input_serializer.validated_data["option_id"]
             if invitation.response_status != Invitation.ResponseStatus.ACCEPTED:
                 return Response(
                     {"detail": "Selection is available only for an accepted invitation."},

@@ -966,6 +966,11 @@ button {
   background: #fffaf0;
 }
 
+.created-link--draft {
+  border-color: rgb(84 51 71 / 16%);
+  background: #fff7fb;
+}
+
 .created-link__copy-error {
   display: block;
   margin-top: 6px;
@@ -1156,7 +1161,8 @@ button {
 }
 
 .response-save-status button,
-.response-overview button {
+.response-overview button,
+.publication-overview button {
   min-height: 42px;
   padding: 9px 15px;
   cursor: pointer;
@@ -1169,7 +1175,8 @@ button {
 }
 
 .response-save-status button:focus-visible,
-.response-overview button:focus-visible {
+.response-overview button:focus-visible,
+.publication-overview button:focus-visible {
   outline: 4px solid rgb(76 39 56 / 25%);
   outline-offset: 3px;
 }
@@ -1249,6 +1256,116 @@ button {
   border-radius: 28px;
   background: rgb(255 255 255 / 94%);
   box-shadow: 0 24px 62px rgb(99 44 67 / 11%);
+}
+
+.publication-overview {
+  display: grid;
+  padding: 20px;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid transparent;
+  border-radius: 20px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.publication-overview--draft {
+  border-color: rgb(194 145 78 / 20%);
+  background: #fff8e9;
+}
+
+.publication-overview--published {
+  border-color: rgb(63 165 116 / 18%);
+  background: #effaf5;
+}
+
+.publication-overview__icon {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 76%);
+  box-shadow: 0 8px 20px rgb(90 44 64 / 7%);
+  font-size: 1.5rem;
+}
+
+.publication-overview__copy > p,
+.publication-overview__copy > h2,
+.publication-overview__copy > span,
+.publication-overview__copy > time {
+  display: block;
+  margin: 0;
+}
+
+.publication-overview__copy > p {
+  margin-bottom: 2px;
+  color: #a27286;
+  font-size: .67rem;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.publication-overview__copy > h2 {
+  color: #472537;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.publication-overview__copy > span {
+  margin-top: 4px;
+  color: #795c69;
+  font-size: .78rem;
+  line-height: 1.45;
+}
+
+.publication-overview__copy > time {
+  margin-top: 7px;
+  color: #6d4c5b;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.publication-overview button {
+  display: inline-flex;
+  min-height: 42px;
+  padding: 9px 15px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  background: #b94569;
+  font-size: .76rem;
+  font-weight: 800;
+}
+
+.publication-overview button:disabled {
+  cursor: wait;
+  opacity: .67;
+}
+
+.publication-overview__message {
+  margin: -3px 0 0;
+  grid-column: 2 / -1;
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.publication-overview__message--success {
+  color: #287454;
+}
+
+.publication-overview__message--error {
+  color: #a63252;
+}
+
+.publication-overview + .response-overview,
+.publication-overview + .manage-card__details {
+  margin-top: 22px;
 }
 
 .response-overview {
@@ -2098,6 +2215,17 @@ button {
   grid-column: 1 / -1;
 }
 
+.manage-card__draft-notice {
+  padding: 14px 16px;
+  margin: 0 0 18px;
+  color: #735542;
+  border: 1px solid rgb(194 145 78 / 20%);
+  border-radius: 14px;
+  background: #fff8e9;
+  font-size: .78rem;
+  line-height: 1.5;
+}
+
 .manage-card__notice {
   padding: 13px 14px;
 }
@@ -2204,17 +2332,20 @@ button {
   }
 
   .response-save-status,
-  .response-overview {
+  .response-overview,
+  .publication-overview {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
   .response-save-status button,
-  .response-overview button {
+  .response-overview button,
+  .publication-overview button {
     width: 100%;
     grid-column: 1 / -1;
   }
 
-  .response-overview__refresh-message {
+  .response-overview__refresh-message,
+  .publication-overview__message {
     grid-column: 1 / -1;
     text-align: center;
   }

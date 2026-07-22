@@ -54,6 +54,8 @@ class InvitationSerializer(serializers.ModelSerializer):
             "recipient_name",
             "message",
             "creation_mode",
+            "publication_status",
+            "published_at",
             "response_status",
             "responded_at",
             "plan_options",
@@ -66,6 +68,8 @@ class InvitationSerializer(serializers.ModelSerializer):
         )
         read_only_fields = (
             "id",
+            "publication_status",
+            "published_at",
             "response_status",
             "responded_at",
             "plan_options",

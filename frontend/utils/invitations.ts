@@ -2,9 +2,11 @@ import {
   INVITATION_CREATION_MODES,
   INVITATION_MESSAGE_MAX_LENGTH,
   INVITATION_NAME_MAX_LENGTH,
+  INVITATION_PUBLICATION_STATUSES,
   type InvitationCreatePayload,
   type InvitationCreationMode,
   type InvitationField,
+  type InvitationPublicationStatus,
   type FinalInvitationResponseStatus,
   type InvitationResponseStatus,
   type InvitationValidationErrors,
@@ -22,6 +24,13 @@ export type InvitationCreationModePresentation = {
   icon: string
   label: string
   submitLabel: string
+}
+
+export type InvitationPublicationPresentation = {
+  description: string
+  icon: string
+  label: string
+  tone: 'draft' | 'published'
 }
 
 export type InvitationResponsePresentation = {
@@ -194,6 +203,32 @@ export function getInvitationCreationModePresentation(
     label: 'Быстрое приглашение',
     description: 'Сразу получи ссылку, а дату и место согласуйте после ответа.',
     submitLabel: 'Создать приглашение',
+  }
+}
+
+export function isInvitationPublicationStatus(
+  value: unknown,
+): value is InvitationPublicationStatus {
+  return INVITATION_PUBLICATION_STATUSES.some(status => status === value)
+}
+
+export function getInvitationPublicationPresentation(
+  status: InvitationPublicationStatus,
+): InvitationPublicationPresentation {
+  if (status === 'draft') {
+    return {
+      tone: 'draft',
+      icon: '📝',
+      label: 'Черновик',
+      description: 'Публичная ссылка пока закрыта. Опубликуй приглашение, когда оно будет готово.',
+    }
+  }
+
+  return {
+    tone: 'published',
+    icon: '💌',
+    label: 'Опубликовано',
+    description: 'Публичная ссылка доступна получателю.',
   }
 }
 

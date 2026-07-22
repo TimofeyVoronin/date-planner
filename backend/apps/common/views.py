@@ -78,8 +78,19 @@ class InvitationCreateView(NoStoreResponseMixin, generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
 
         management_token = generate_management_token()
+        creation_mode = serializer.validated_data.get(
+            "creation_mode",
+            Invitation.CreationMode.QUICK,
+        )
+        is_extended = creation_mode == Invitation.CreationMode.EXTENDED
         invitation = serializer.save(
             management_token_hash=hash_management_token(management_token),
+            publication_status=(
+                Invitation.PublicationStatus.DRAFT
+                if is_extended
+                else Invitation.PublicationStatus.PUBLISHED
+            ),
+            published_at=None if is_extended else now(),
         )
         response_serializer = InvitationCreateResponseSerializer(
             invitation,
@@ -98,7 +109,9 @@ class InvitationCreateView(NoStoreResponseMixin, generics.CreateAPIView):
 class InvitationDetailView(NoStoreResponseMixin, generics.RetrieveAPIView):
     """Retrieve one invitation by its public UUID."""
 
-    queryset = Invitation.objects.all()
+    queryset = Invitation.objects.filter(
+        publication_status=Invitation.PublicationStatus.PUBLISHED,
+    )
     serializer_class = InvitationSerializer
     permission_classes = [AllowAny]
     http_method_names = ["get", "options"]
@@ -148,7 +161,9 @@ class InvitationManagementDetailView(NoStoreResponseMixin, generics.RetrieveAPIV
 class InvitationResponseView(NoStoreResponseMixin, generics.GenericAPIView):
     """Store the recipient's current response through the public invitation UUID."""
 
-    queryset = Invitation.objects.select_for_update()
+    queryset = Invitation.objects.filter(
+        publication_status=Invitation.PublicationStatus.PUBLISHED,
+    ).select_for_update()
     serializer_class = InvitationResponseUpdateSerializer
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -177,12 +192,11 @@ class InvitationResponseView(NoStoreResponseMixin, generics.GenericAPIView):
     )
     def put(self, request: Request, *args: object, **kwargs: object) -> Response:
         """Set or replace the invitation response, preserving idempotent repeats."""
-        input_serializer = self.get_serializer(data=request.data)
-        input_serializer.is_valid(raise_exception=True)
-        response_status = input_serializer.validated_data["response_status"]
-
         with transaction.atomic():
             invitation = self.get_object()
+            input_serializer = self.get_serializer(data=request.data)
+            input_serializer.is_valid(raise_exception=True)
+            response_status = input_serializer.validated_data["response_status"]
             confirmation_exists = invitation.plan_options.filter(
                 confirmed_at__isnull=False
             ).exists()

@@ -7,6 +7,8 @@ These rules apply to the entire repository.
 - Preserve the monorepo boundary: Django code belongs in `backend/`, while Nuxt and Vue code belongs in `frontend/`.
 - Do not mix backend concerns into frontend components or frontend concerns into Django modules. Communicate through documented HTTP APIs.
 - Keep public REST endpoints under `/api/v1/`. Schema and documentation endpoints may remain under `/api/`.
+- Treat `Invitation.publication_status` as a security boundary: recipient-facing reads and mutations must expose only `published` invitations, while drafts require the matching management capability.
+- Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 
 ## Dependencies and code quality

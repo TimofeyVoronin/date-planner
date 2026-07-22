@@ -8,6 +8,7 @@ import {
   INVITATION_NAME_MAX_LENGTH,
   type InvitationCreatePayload,
   type InvitationCreationMode,
+  type InvitationPublicationStatus,
   type InvitationValidationErrors,
 } from '../../types/invitation'
 import {
@@ -26,7 +27,8 @@ type CopyState = 'idle' | 'copied' | 'failed'
 type CreatedLinks = {
   creationMode: InvitationCreationMode
   management: string
-  public: string
+  publicationStatus: InvitationPublicationStatus
+  public: string | null
 }
 
 const api = useInvitationsApi()
@@ -85,7 +87,10 @@ async function submitInvitation(): Promise<void> {
 
     createdLinks.value = {
       creationMode: invitation.creation_mode,
-      public: buildPublicInvitationUrl(origin, invitation.id),
+      publicationStatus: invitation.publication_status,
+      public: invitation.publication_status === 'published'
+        ? buildPublicInvitationUrl(origin, invitation.id)
+        : null,
       management: buildManagementInvitationUrl(
         origin,
         invitation.id,
@@ -113,7 +118,13 @@ async function copyLink(target: CopyTarget): Promise<void> {
     return
   }
 
-  copyState[target] = await copyTextWithFallback(links[target]) ? 'copied' : 'failed'
+  const link = links[target]
+
+  if (!link) {
+    return
+  }
+
+  copyState[target] = await copyTextWithFallback(link) ? 'copied' : 'failed'
 }
 </script>
 
@@ -281,8 +292,16 @@ async function copyLink(target: CopyTarget): Promise<void> {
       <div class="created-invitation__intro">
         <span class="created-invitation__icon" aria-hidden="true">✓</span>
         <div>
-          <h3 id="created-invitation-title">Приглашение готово</h3>
-          <p>Отправь получателю только первую ссылку.</p>
+          <h3 id="created-invitation-title">
+            {{ createdLinks.publicationStatus === 'draft'
+              ? 'Черновик создан'
+              : 'Приглашение готово' }}
+          </h3>
+          <p>
+            {{ createdLinks.publicationStatus === 'draft'
+              ? 'Сохрани секретную ссылку и продолжи настройку на странице автора.'
+              : 'Отправь получателю только первую ссылку.' }}
+          </p>
           <span class="created-invitation__mode">
             {{ getInvitationCreationModePresentation(createdLinks.creationMode).icon }}
             {{ getInvitationCreationModePresentation(createdLinks.creationMode).label }}
@@ -290,7 +309,7 @@ async function copyLink(target: CopyTarget): Promise<void> {
         </div>
       </div>
 
-      <div class="created-link">
+      <div v-if="createdLinks.public" class="created-link">
         <label for="public-invitation-link">Публичная ссылка</label>
         <div class="created-link__controls">
           <input
@@ -315,8 +334,15 @@ async function copyLink(target: CopyTarget): Promise<void> {
         </span>
       </div>
 
-      <div class="created-link created-link--secret">
-        <label for="management-invitation-link">Секретная ссылка управления</label>
+      <div
+        class="created-link created-link--secret"
+        :class="{ 'created-link--draft': createdLinks.publicationStatus === 'draft' }"
+      >
+        <label for="management-invitation-link">
+          {{ createdLinks.publicationStatus === 'draft'
+            ? 'Секретная ссылка черновика'
+            : 'Секретная ссылка управления' }}
+        </label>
         <div class="created-link__controls">
           <input
             id="management-invitation-link"
@@ -334,7 +360,11 @@ async function copyLink(target: CopyTarget): Promise<void> {
             {{ copyState.management === 'copied' ? 'Скопировано' : 'Копировать' }}
           </button>
         </div>
-        <a :href="createdLinks.management">Открыть управление</a>
+        <a :href="createdLinks.management">
+          {{ createdLinks.publicationStatus === 'draft'
+            ? 'Продолжить настройку'
+            : 'Открыть управление' }}
+        </a>
         <span
           v-if="copyState.management === 'failed'"
           class="created-link__copy-error"
@@ -348,7 +378,10 @@ async function copyLink(target: CopyTarget): Promise<void> {
         <span aria-hidden="true">🔐</span>
         <strong>Сохрани секретную ссылку сейчас.</strong>
         Она открывает закрытую страницу автора, восстановить её без аккаунта нельзя.
-        Не отправляй её получателю.
+        <template v-if="createdLinks.publicationStatus === 'draft'">
+          Публичная ссылка появится после публикации черновика.
+        </template>
+        <template v-else>Не отправляй секретную ссылку получателю.</template>
       </p>
 
       <p class="sr-only" aria-live="polite">
