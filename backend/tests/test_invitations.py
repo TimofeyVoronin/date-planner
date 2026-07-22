@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
+from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -18,13 +19,17 @@ def invitation_payload(
     author_name: str = "Алиса",
     recipient_name: str = "Борис",
     message: str = "Давай сходим на свидание?",
+    creation_mode: str | None = None,
 ) -> dict[str, str]:
     """Build a valid request body with optional field overrides."""
-    return {
+    payload = {
         "author_name": author_name,
         "recipient_name": recipient_name,
         "message": message,
     }
+    if creation_mode is not None:
+        payload["creation_mode"] = creation_mode
+    return payload
 
 
 def test_create_invitation_persists_and_returns_public_fields() -> None:
@@ -42,6 +47,7 @@ def test_create_invitation_persists_and_returns_public_fields() -> None:
     assert body["author_name"] == invitation.author_name == "Алиса"
     assert body["recipient_name"] == invitation.recipient_name == "Борис"
     assert body["message"] == invitation.message == "Давай сходим на свидание?"
+    assert body["creation_mode"] == invitation.creation_mode == Invitation.CreationMode.QUICK
     assert body["created_at"]
     assert body["updated_at"]
     assert body["response_status"] == Invitation.ResponseStatus.PENDING
@@ -53,6 +59,49 @@ def test_create_invitation_persists_and_returns_public_fields() -> None:
     assert body["server_now"]
     assert body["management_token"]
     assert "management_token_hash" not in body
+
+
+def test_create_invitation_persists_explicit_extended_mode() -> None:
+    """The extended choice is validated, persisted, and returned by every representation."""
+    response = APIClient().post(
+        "/api/v1/invitations/",
+        invitation_payload(creation_mode=Invitation.CreationMode.EXTENDED),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()
+    invitation = Invitation.objects.get(pk=body["id"])
+    assert body["creation_mode"] == Invitation.CreationMode.EXTENDED
+    assert invitation.creation_mode == Invitation.CreationMode.EXTENDED
+
+    public_response = APIClient().get(f"/api/v1/invitations/{invitation.pk}/")
+    assert public_response.status_code == status.HTTP_200_OK
+    assert public_response.json()["creation_mode"] == Invitation.CreationMode.EXTENDED
+
+
+@pytest.mark.parametrize("creation_mode", ["", "wizard", None])
+def test_create_invitation_rejects_invalid_creation_mode(
+    creation_mode: str | None,
+) -> None:
+    """Only the documented quick and extended mode values are accepted."""
+    payload: dict[str, object] = invitation_payload()
+    payload["creation_mode"] = creation_mode
+
+    response = APIClient().post("/api/v1/invitations/", payload, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "creation_mode" in response.json()
+    assert Invitation.objects.count() == 0
+
+
+def test_database_rejects_unknown_creation_mode() -> None:
+    """The database constraint protects records created outside the API serializer."""
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Invitation.objects.create(
+            **invitation_payload(),
+            creation_mode="wizard",
+        )
 
 
 def test_read_invitation_by_uuid() -> None:
@@ -67,6 +116,7 @@ def test_read_invitation_by_uuid() -> None:
     assert response.json() == {
         "id": str(invitation.pk),
         **invitation_payload(),
+        "creation_mode": Invitation.CreationMode.QUICK,
         "response_status": Invitation.ResponseStatus.PENDING,
         "responded_at": None,
         "plan_options": [],
