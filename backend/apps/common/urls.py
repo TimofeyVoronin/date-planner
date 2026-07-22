@@ -2,7 +2,12 @@
 
 from django.urls import path
 
-from apps.common.views import InvitationCreateView, InvitationDetailView, health_check
+from apps.common.views import (
+    InvitationCreateView,
+    InvitationDetailView,
+    InvitationManagementDetailView,
+    health_check,
+)
 
 app_name = "common"
 
@@ -13,5 +18,10 @@ urlpatterns = [
         "invitations/<uuid:pk>/",
         InvitationDetailView.as_view(),
         name="invitation-detail",
+    ),
+    path(
+        "invitations/<uuid:pk>/manage/",
+        InvitationManagementDetailView.as_view(),
+        name="invitation-management-detail",
     ),
 ]

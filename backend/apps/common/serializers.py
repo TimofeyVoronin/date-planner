@@ -33,3 +33,24 @@ class InvitationSerializer(serializers.ModelSerializer):
             "recipient_name": {"min_length": 1, "trim_whitespace": True},
             "message": {"min_length": 1, "trim_whitespace": True},
         }
+
+
+class InvitationCreateResponseSerializer(InvitationSerializer):
+    """Expose the management capability once, only in the creation response."""
+
+    management_token = serializers.SerializerMethodField(
+        help_text="Save this capability now; it cannot be retrieved again.",
+    )
+
+    class Meta(InvitationSerializer.Meta):
+        """Add the transient token to the normal public invitation fields."""
+
+        fields = InvitationSerializer.Meta.fields + ("management_token",)
+        read_only_fields = InvitationSerializer.Meta.read_only_fields + ("management_token",)
+
+    def get_management_token(self, invitation: Invitation) -> str:
+        """Read the transient plaintext token passed only by the create view."""
+        token = self.context.get("management_token")
+        if not isinstance(token, str):
+            raise RuntimeError("The creation response requires a management token.")
+        return token

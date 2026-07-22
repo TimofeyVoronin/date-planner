@@ -132,6 +132,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": os.getenv("DRF_THROTTLE_ANON_RATE", "60/min"),
         "user": os.getenv("DRF_THROTTLE_USER_RATE", "120/min"),
+        "invitation_create": os.getenv("DRF_THROTTLE_CREATE_RATE", "10/min"),
     },
     # There is no reverse proxy in the current Compose stack, so client identity
     # must come from REMOTE_ADDR rather than a spoofable X-Forwarded-For header.

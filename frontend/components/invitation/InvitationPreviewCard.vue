@@ -4,6 +4,18 @@ import { RUNAWAY_ATTEMPT_LIMIT, useRunawayButton } from '../../composables/useRu
 
 type Answer = 'accepted' | 'declined' | null
 
+type Props = {
+  authorName?: string
+  message?: string
+  recipientName?: string
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  authorName: '',
+  message: '',
+  recipientName: '',
+})
+
 const answer = ref<Answer>(null)
 const secondChance = ref(false)
 const resultHeadingRef = ref<HTMLElement | null>(null)
@@ -118,10 +130,21 @@ function resetDemo(): void {
           Может всё таки да?
           <span class="invitation-card__sad-emoji" aria-hidden="true">😢</span>
         </span>
+        <span v-else-if="props.recipientName">
+          {{ props.recipientName }},<br>
+          ты пойдёшь со мной<br>на свидание?
+        </span>
         <span v-else>
           Ты пойдёшь со мной<br>на свидание?
         </span>
       </h2>
+
+      <p v-if="props.message" class="invitation-card__personal-message">
+        {{ props.message }}
+      </p>
+      <p v-if="props.authorName" class="invitation-card__signature">
+        — {{ props.authorName }}
+      </p>
 
       <div
         ref="containerRef"
@@ -190,7 +213,9 @@ function resetDemo(): void {
       <button
         class="invitation-card__reset-button"
         type="button"
-        aria-label="Вернуть демонстрацию в начальное состояние"
+        :aria-label="props.recipientName
+          ? 'Вернуть приглашение в начальное состояние'
+          : 'Вернуть демонстрацию в начальное состояние'"
         @click="resetDemo"
       >
         Посмотреть ещё раз

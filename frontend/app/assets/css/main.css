@@ -299,6 +299,7 @@ button {
   font-size: clamp(1.7rem, 5.5vw, 2.45rem);
   line-height: 1.12;
   letter-spacing: -.025em;
+  overflow-wrap: anywhere;
   text-wrap: balance;
   transition: color .2s ease;
 }
@@ -512,6 +513,574 @@ button {
   box-shadow: 0 0 0 4px rgb(187 112 137 / 13%);
 }
 
+.home-flow {
+  display: grid;
+  width: 100%;
+  align-items: start;
+  gap: 36px;
+  grid-template-columns: minmax(0, 1fr) minmax(480px, 580px);
+}
+
+.create-card {
+  width: 100%;
+  padding: 34px;
+  border: 1px solid rgb(229 104 143 / 15%);
+  border-radius: 30px;
+  background: rgb(255 255 255 / 92%);
+  box-shadow:
+    0 24px 60px rgb(133 38 72 / 12%),
+    0 4px 14px rgb(133 38 72 / 6%);
+  backdrop-filter: blur(12px);
+}
+
+.create-card__heading {
+  margin-bottom: 26px;
+}
+
+.create-card__step,
+.preview-section__step,
+.detail-shell__heading > p,
+.manage-shell__heading > p {
+  margin: 0 0 7px;
+  color: #bd4f72;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.create-card__heading h2,
+.preview-section h2,
+.detail-shell__heading h1,
+.manage-shell__heading h1,
+.state-card h1 {
+  margin: 0;
+  color: #402030;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  letter-spacing: -.025em;
+  text-wrap: balance;
+}
+
+.create-card__heading h2 {
+  font-size: clamp(1.8rem, 3vw, 2.35rem);
+}
+
+.create-card__heading > p:last-child,
+.preview-section > p:not(.preview-section__step) {
+  margin: 9px 0 0;
+  color: #806171;
+  font-size: .93rem;
+  line-height: 1.5;
+}
+
+.invitation-form {
+  display: grid;
+  gap: 20px;
+}
+
+.invitation-form__names {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.form-field label,
+.created-link label {
+  color: #543044;
+  font-size: .84rem;
+  font-weight: 800;
+}
+
+.form-field__label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.form-field__label-row > span {
+  color: #a98a98;
+  font-size: .7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.form-field input,
+.form-field textarea,
+.created-link input {
+  width: 100%;
+  color: #452235;
+  border: 1px solid #e8c8d3;
+  border-radius: 14px;
+  background: rgb(255 250 252 / 82%);
+  outline: none;
+  transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+}
+
+.form-field input,
+.created-link input {
+  min-height: 49px;
+  padding: 11px 14px;
+}
+
+.form-field textarea {
+  min-height: 112px;
+  padding: 13px 14px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.form-field label + input,
+.form-field__label-row + textarea {
+  margin-top: 7px;
+}
+
+.form-field input::placeholder,
+.form-field textarea::placeholder {
+  color: #b397a3;
+}
+
+.form-field input:focus,
+.form-field textarea:focus,
+.created-link input:focus {
+  border-color: #db7092;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgb(219 112 146 / 13%);
+}
+
+.form-field input[aria-invalid='true'],
+.form-field textarea[aria-invalid='true'] {
+  border-color: #cf4968;
+}
+
+.form-field__hint,
+.form-field__error {
+  margin-top: 6px;
+  font-size: .72rem;
+  line-height: 1.35;
+}
+
+.form-field__hint {
+  color: #9a7c89;
+}
+
+.form-field__error {
+  color: #ad2f50;
+  font-weight: 700;
+}
+
+.invitation-form__submit,
+.created-link button,
+.state-card button,
+.state-card a {
+  min-height: 48px;
+  cursor: pointer;
+  border: 0;
+  border-radius: 999px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.invitation-form__submit {
+  display: inline-flex;
+  width: 100%;
+  padding: 12px 22px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #fff;
+  background: linear-gradient(145deg, #f26490, #df356b);
+  box-shadow: 0 13px 28px rgb(209 49 99 / 24%);
+  transition: transform .18s ease, box-shadow .18s ease, opacity .18s ease;
+}
+
+.invitation-form__submit:hover:not(:disabled) {
+  box-shadow: 0 16px 32px rgb(209 49 99 / 31%);
+  transform: translateY(-1px);
+}
+
+.invitation-form__submit:disabled {
+  cursor: wait;
+  opacity: .7;
+}
+
+.invitation-form__submit:focus-visible,
+.created-link button:focus-visible,
+.state-card button:focus-visible,
+.state-card a:focus-visible,
+.brand-link:focus-visible {
+  outline: 4px solid rgb(76 39 56 / 25%);
+  outline-offset: 3px;
+}
+
+.form-status,
+.created-invitation {
+  margin-top: 24px;
+  outline: none;
+}
+
+.form-status {
+  display: flex;
+  padding: 15px 17px;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: 15px;
+  font-size: .85rem;
+  line-height: 1.45;
+}
+
+.form-status--error {
+  color: #812a46;
+  border: 1px solid rgb(200 62 96 / 20%);
+  background: #fff0f3;
+}
+
+.created-invitation {
+  padding-top: 24px;
+  border-top: 1px solid #f1d9e1;
+}
+
+.created-invitation__intro {
+  display: flex;
+  margin-bottom: 20px;
+  align-items: center;
+  gap: 12px;
+}
+
+.created-invitation__icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #fff;
+  border-radius: 50%;
+  background: #3fa574;
+  box-shadow: 0 8px 18px rgb(63 165 116 / 18%);
+  font-weight: 900;
+}
+
+.created-invitation__intro h3 {
+  margin: 0;
+  color: #402030;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  font-size: 1.35rem;
+}
+
+.created-invitation__intro p {
+  margin: 2px 0 0;
+  color: #806171;
+  font-size: .8rem;
+}
+
+.created-link + .created-link {
+  margin-top: 18px;
+}
+
+.created-link__controls {
+  display: grid;
+  margin-top: 7px;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.created-link input {
+  overflow: hidden;
+  color: #735366;
+  background: #fff;
+  font-size: .76rem;
+  text-overflow: ellipsis;
+}
+
+.created-link button {
+  padding: 10px 17px;
+  color: #fff;
+  border-radius: 13px;
+  background: #563347;
+}
+
+.created-link > a {
+  display: inline-block;
+  margin-top: 7px;
+  color: #b43f65;
+  font-size: .77rem;
+  font-weight: 800;
+  text-underline-offset: 3px;
+}
+
+.created-link--secret {
+  padding: 15px;
+  border: 1px solid rgb(202 145 72 / 20%);
+  border-radius: 17px;
+  background: #fffaf0;
+}
+
+.created-link__copy-error {
+  display: block;
+  margin-top: 6px;
+  color: #a33c57;
+  font-size: .72rem;
+}
+
+.created-invitation__warning,
+.manage-card__notice {
+  margin: 17px 0 0;
+  color: #735542;
+  border-radius: 14px;
+  background: #fff6df;
+  font-size: .76rem;
+  line-height: 1.5;
+}
+
+.created-invitation__warning {
+  padding: 13px 14px;
+}
+
+.preview-section {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  flex-direction: column;
+  text-align: center;
+}
+
+.preview-section h2 {
+  font-size: clamp(1.65rem, 3vw, 2.15rem);
+}
+
+.preview-section > p:not(.preview-section__step) {
+  margin-bottom: 18px;
+}
+
+.invitation-card__personal-message {
+  max-width: 440px;
+  margin: 17px auto 0;
+  color: #70475a;
+  font-size: .94rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.invitation-card__signature {
+  margin: 8px 0 0;
+  color: #b84e70;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  font-size: 1rem;
+  font-style: italic;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.detail-page {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 9% 16%, rgb(255 255 255 / 90%) 0 7%, transparent 24%),
+    radial-gradient(circle at 93% 75%, rgb(255 210 225 / 48%) 0 8%, transparent 29%),
+    linear-gradient(155deg, #fff8fa, #ffeaf1);
+}
+
+.detail-page--management {
+  background: linear-gradient(150deg, #fff9fb, #f7edf3);
+}
+
+.detail-shell,
+.manage-shell {
+  display: flex;
+  width: min(100%, 900px);
+  min-height: 100vh;
+  padding: 30px 24px 42px;
+  margin: 0 auto;
+  align-items: center;
+  flex-direction: column;
+}
+
+.manage-shell {
+  width: min(100%, 790px);
+}
+
+.brand-link {
+  display: inline-flex;
+  margin-bottom: 20px;
+  align-items: center;
+  gap: 8px;
+  color: #9c3f60;
+  border-radius: 12px;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.brand-link img {
+  width: 43px;
+  height: auto;
+}
+
+.detail-shell__heading,
+.manage-shell__heading {
+  max-width: 650px;
+  margin: 0 auto 21px;
+  text-align: center;
+}
+
+.detail-shell__heading h1,
+.manage-shell__heading h1 {
+  font-size: clamp(1.8rem, 5vw, 2.75rem);
+  overflow-wrap: anywhere;
+}
+
+.manage-shell__heading > span {
+  display: block;
+  margin-top: 9px;
+  color: #806171;
+  font-size: .82rem;
+  line-height: 1.5;
+}
+
+.detail-shell__privacy {
+  margin: 16px 0 0;
+  color: #947586;
+  font-size: .75rem;
+  text-align: center;
+}
+
+.state-card {
+  display: flex;
+  width: min(100%, 540px);
+  min-height: 330px;
+  padding: 42px 34px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  border: 1px solid rgb(229 104 143 / 14%);
+  border-radius: 30px;
+  background: rgb(255 255 255 / 90%);
+  box-shadow: 0 24px 62px rgb(133 38 72 / 12%);
+  text-align: center;
+}
+
+.state-card__icon {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 19px;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff0f5;
+  font-size: 1.85rem;
+}
+
+.state-card__icon--loading {
+  color: #e6517e;
+  animation: loading-heart 1.1s ease-in-out infinite;
+}
+
+.state-card h1 {
+  font-size: clamp(1.65rem, 5vw, 2.25rem);
+}
+
+.state-card > p {
+  max-width: 410px;
+  margin: 13px 0 0;
+  color: #806171;
+  line-height: 1.55;
+}
+
+.state-card > a,
+.state-card__actions {
+  margin-top: 24px;
+}
+
+.state-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.state-card button,
+.state-card a {
+  display: inline-flex;
+  min-height: 46px;
+  padding: 11px 20px;
+  align-items: center;
+  color: #fff;
+  background: #553145;
+}
+
+.state-card a {
+  background: #b94569;
+}
+
+.manage-card {
+  width: 100%;
+  padding: 32px;
+  border: 1px solid rgb(229 104 143 / 14%);
+  border-radius: 28px;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 24px 62px rgb(99 44 67 / 11%);
+}
+
+.manage-card__details {
+  display: grid;
+  margin: 0 0 28px;
+  gap: 13px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.manage-card__details > div {
+  padding: 16px;
+  border: 1px solid #f0dce3;
+  border-radius: 16px;
+  background: #fffafc;
+}
+
+.manage-card__details dt {
+  margin-bottom: 4px;
+  color: #a27286;
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.manage-card__details dd {
+  margin: 0;
+  color: #4b283a;
+  font-weight: 700;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.manage-card__message {
+  grid-column: 1 / -1;
+}
+
+.manage-card__notice {
+  padding: 13px 14px;
+}
+
+@keyframes loading-heart {
+  0%,
+  100% {
+    transform: scale(.88);
+  }
+
+  50% {
+    transform: scale(1.08);
+  }
+}
+
 @keyframes point-down {
   0%,
   100% {
@@ -532,6 +1101,19 @@ button {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 1000px) {
+  .home-flow {
+    width: min(100%, 680px);
+    gap: 42px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .preview-section {
+    width: min(100%, 580px);
+    margin: 0 auto;
   }
 }
 
@@ -558,6 +1140,32 @@ button {
     margin: 15px 0 22px;
   }
 
+  .home-flow {
+    gap: 34px;
+  }
+
+  .create-card {
+    padding: 25px 20px;
+    border-radius: 25px;
+  }
+
+  .invitation-form__names,
+  .manage-card__details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .manage-card__message {
+    grid-column: auto;
+  }
+
+  .created-link__controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .created-link button {
+    width: 100%;
+  }
+
   .invitation-card {
     border-radius: 27px;
   }
@@ -582,6 +1190,21 @@ button {
   .invitation-card__result {
     min-height: 330px;
     padding: 38px 24px 34px;
+  }
+
+  .detail-shell,
+  .manage-shell {
+    padding: 22px 12px 30px;
+  }
+
+  .state-card,
+  .manage-card {
+    padding: 29px 20px;
+    border-radius: 24px;
+  }
+
+  .state-card {
+    min-height: 300px;
   }
 
   .background-heart--one {

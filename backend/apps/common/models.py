@@ -12,6 +12,12 @@ class Invitation(models.Model):
     author_name = models.CharField(max_length=100)
     recipient_name = models.CharField(max_length=100)
     message = models.TextField(max_length=1000)
+    management_token_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        editable=False,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

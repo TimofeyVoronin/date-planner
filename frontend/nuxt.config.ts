@@ -1,3 +1,10 @@
+const personalPageHeaders = {
+  'cache-control': 'private, no-store',
+  'referrer-policy': 'no-referrer',
+  'x-frame-options': 'DENY',
+  'x-robots-tag': 'noindex, nofollow',
+}
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   modules: ['@nuxt/eslint'],
@@ -17,6 +24,10 @@ export default defineNuxtConfig({
         { name: 'theme-color', content: '#fff3f6' },
       ],
     },
+  },
+  routeRules: {
+    '/invite/**': { headers: personalPageHeaders },
+    '/manage/**': { headers: personalPageHeaders },
   },
   typescript: {
     strict: true,

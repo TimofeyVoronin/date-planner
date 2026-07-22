@@ -42,6 +42,8 @@ def test_create_invitation_persists_and_returns_public_fields() -> None:
     assert body["message"] == invitation.message == "Давай сходим на свидание?"
     assert body["created_at"]
     assert body["updated_at"]
+    assert body["management_token"]
+    assert "management_token_hash" not in body
 
 
 def test_read_invitation_by_uuid() -> None:

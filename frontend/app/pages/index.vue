@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import InvitationCreateForm from '../../components/invitation/InvitationCreateForm.vue'
 import InvitationPreviewCard from '../../components/invitation/InvitationPreviewCard.vue'
 
 type ApiHealthResponse = {
@@ -55,10 +56,22 @@ onMounted(async () => {
           Создай приглашение<br class="hero__desktop-break">
           на свидание <span>ЗА 2 МИНУТЫ</span>
         </h1>
-        <p class="hero__subtitle">Вот что увидит тот, кого ты позовёшь <span aria-hidden="true">👇</span></p>
+        <p class="hero__subtitle">
+          Без регистрации: создай приглашение и поделись личной ссылкой
+          <span aria-hidden="true">👇</span>
+        </p>
       </header>
 
-      <InvitationPreviewCard />
+      <div class="home-flow">
+        <InvitationCreateForm />
+
+        <section class="preview-section" aria-labelledby="preview-title">
+          <p class="preview-section__step">Шаг 2 · предпросмотр</p>
+          <h2 id="preview-title">Вот что увидит тот, кого ты позовёшь</h2>
+          <p>Попробуй ответить — кнопка «Нет» немного стесняется.</p>
+          <InvitationPreviewCard />
+        </section>
+      </div>
 
       <aside
         v-if="showApiStatus && apiCheckFinished"
