@@ -78,6 +78,12 @@ class Invitation(models.Model):
         selected_option = self.selected_plan_option
         return selected_option.selected_at if selected_option is not None else None
 
+    @property
+    def confirmed_at(self) -> datetime | None:
+        """Expose the final confirmation timestamp stored on the selected option."""
+        selected_option = self.selected_plan_option
+        return selected_option.confirmed_at if selected_option is not None else None
+
     def __str__(self) -> str:
         """Return a concise human-readable representation."""
         return f"{self.author_name} → {self.recipient_name}"
@@ -97,6 +103,7 @@ class InvitationPlanOption(models.Model):
     comment = models.CharField(max_length=500, blank=True, default="")
     position = models.PositiveSmallIntegerField()
     selected_at = models.DateTimeField(null=True, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         """Keep each invitation's options in their submitted order."""
@@ -115,6 +122,17 @@ class InvitationPlanOption(models.Model):
                 fields=("invitation",),
                 condition=models.Q(selected_at__isnull=False),
                 name="unique_selected_plan_option_per_invitation",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(confirmed_at__isnull=True)
+                    | (
+                        models.Q(selected_at__isnull=False)
+                        & models.Q(confirmed_at__gte=models.F("selected_at"))
+                        & models.Q(confirmed_at__lt=models.F("starts_at"))
+                    )
+                ),
+                name="invitation_plan_confirmation_requires_selection",
             ),
         ]
 

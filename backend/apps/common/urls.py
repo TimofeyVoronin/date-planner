@@ -2,6 +2,7 @@
 
 from django.urls import path
 
+from apps.common.confirmation_views import InvitationConfirmationView
 from apps.common.planning_views import InvitationPlanOptionsView, InvitationSelectionView
 from apps.common.views import (
     InvitationCreateView,
@@ -40,5 +41,10 @@ urlpatterns = [
         "invitations/<uuid:pk>/selection/",
         InvitationSelectionView.as_view(),
         name="invitation-selection",
+    ),
+    path(
+        "invitations/<uuid:pk>/confirmation/",
+        InvitationConfirmationView.as_view(),
+        name="invitation-confirmation",
     ),
 ]

@@ -22,6 +22,7 @@ type SaveState = 'error' | 'idle' | 'saving' | 'success'
 type EditorRow = PlanOptionDraft & { key: number }
 
 type Props = {
+  currentTime: Date
   options: InvitationPlanOption[]
   saveError?: string
   saveState?: SaveState
@@ -40,7 +41,7 @@ const rows = ref<EditorRow[]>([])
 const optionErrors = ref<PlanOptionDraftErrors[]>([])
 const formError = ref('')
 const statusRef = ref<HTMLElement | null>(null)
-const minimumDateTime = getMinimumPlanDateTime()
+const minimumDateTime = computed(() => getMinimumPlanDateTime(props.currentTime))
 let nextKey = 0
 
 const canAdd = computed(() => rows.value.length < MAX_PLAN_OPTIONS)
@@ -115,7 +116,7 @@ function submitOptions(): void {
     place,
     comment,
   }))
-  const validation = validatePlanOptionDrafts(drafts)
+  const validation = validatePlanOptionDrafts(drafts, props.currentTime)
 
   optionErrors.value = validation.optionErrors
   formError.value = validation.formError ?? ''
@@ -287,7 +288,7 @@ watch(
         tabindex="-1"
       >
         <template v-if="!formError && props.saveState === 'success'">
-          Варианты сохранены — можно отправить получателю публичную ссылку.
+          Варианты сохранены — получатель сможет выбрать один по публичной ссылке.
         </template>
         <template v-else>
           {{ formError || props.saveError }}

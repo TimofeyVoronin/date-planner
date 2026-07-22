@@ -371,7 +371,100 @@ def test_plan_cannot_change_after_recipient_selection() -> None:
     )
 
     assert response.status_code == status.HTTP_409_CONFLICT
+    assert response["Cache-Control"] == "private, no-store"
     assert list(invitation.plan_options.values_list("id", flat=True)) == existing_ids
+
+
+def test_author_can_replace_options_after_unconfirmed_selection_expires() -> None:
+    """An expired non-final choice can be atomically replaced to recover planning."""
+    invitation, token = accepted_invitation()
+    options = create_plan_options(invitation)
+    options[0].starts_at = django_now() - timedelta(seconds=1)
+    options[0].selected_at = django_now()
+    options[0].save(update_fields=("starts_at", "selected_at"))
+    old_ids = [option.pk for option in options]
+    invitation.refresh_from_db()
+    previous_updated_at = invitation.updated_at
+
+    response = APIClient().put(
+        plan_path(invitation.pk),
+        plan_payload(prefix="Восстановленный"),
+        format="json",
+        **authorization(token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["selected_option_id"] is None
+    assert response.json()["selected_at"] is None
+    assert response.json()["confirmed_at"] is None
+    assert [option["place"] for option in response.json()["plan_options"]] == [
+        "Восстановленный 1",
+        "Восстановленный 2",
+    ]
+    assert not InvitationPlanOption.objects.filter(pk__in=old_ids).exists()
+    invitation.refresh_from_db()
+    assert invitation.updated_at > previous_updated_at
+
+
+def test_invalid_recovery_payload_preserves_expired_selection_and_options() -> None:
+    """Recovery validates the full replacement before deleting the expired choice."""
+    invitation, token = accepted_invitation()
+    options = create_plan_options(invitation)
+    options[0].starts_at = django_now() - timedelta(seconds=1)
+    options[0].selected_at = django_now()
+    options[0].save(update_fields=("starts_at", "selected_at"))
+    existing_ids = list(invitation.plan_options.values_list("id", flat=True))
+    invitation.refresh_from_db()
+    previous_updated_at = invitation.updated_at
+
+    response = APIClient().put(
+        plan_path(invitation.pk),
+        plan_payload(1, prefix="Недостаточно"),
+        format="json",
+        **authorization(token),
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response["Cache-Control"] == "private, no-store"
+    assert list(invitation.plan_options.values_list("id", flat=True)) == existing_ids
+    options[0].refresh_from_db()
+    invitation.refresh_from_db()
+    assert options[0].selected_at is not None
+    assert options[0].confirmed_at is None
+    assert invitation.updated_at == previous_updated_at
+
+
+def test_confirmed_expired_selection_cannot_be_replaced() -> None:
+    """Elapsed wall-clock time never reopens an already final plan."""
+    invitation, token = accepted_invitation()
+    starts_at = django_now() - timedelta(seconds=1)
+    confirmed_at = starts_at - timedelta(seconds=1)
+    selected_at = confirmed_at - timedelta(seconds=1)
+    option = InvitationPlanOption.objects.create(
+        invitation=invitation,
+        starts_at=starts_at,
+        place="Уже подтверждено",
+        position=0,
+        selected_at=selected_at,
+        confirmed_at=confirmed_at,
+    )
+    invitation.refresh_from_db()
+    previous_updated_at = invitation.updated_at
+
+    response = APIClient().put(
+        plan_path(invitation.pk),
+        plan_payload(prefix="Запрещённая замена"),
+        format="json",
+        **authorization(token),
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response["Cache-Control"] == "private, no-store"
+    option.refresh_from_db()
+    invitation.refresh_from_db()
+    assert option.selected_at == selected_at
+    assert option.confirmed_at == confirmed_at
+    assert invitation.updated_at == previous_updated_at
 
 
 def test_plan_endpoint_requires_matching_management_capability() -> None:

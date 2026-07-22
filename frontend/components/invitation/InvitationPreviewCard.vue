@@ -14,6 +14,7 @@ type Props = {
   authorName?: string
   initialStatus?: InvitationResponseStatus
   message?: string
+  planningContext?: boolean
   recipientName?: string
 }
 
@@ -22,6 +23,7 @@ const props = withDefaults(defineProps<Props>(), {
   authorName: '',
   initialStatus: 'pending',
   message: '',
+  planningContext: false,
   recipientName: '',
 })
 const emit = defineEmits<{
@@ -230,7 +232,7 @@ watch(
         tabindex="-1"
       >
         <template v-if="answer === 'accepted'">
-          Ура! Теперь давай спланируем идеальное свидание 💘
+          Ура! Кажется, свиданию быть 💘
         </template>
         <template v-else>
           Очень жаль 😢
@@ -238,7 +240,9 @@ watch(
       </h2>
       <p class="invitation-card__result-copy">
         {{ answer === 'accepted'
-          ? 'Следующим шагом здесь появится совместное планирование.'
+          ? props.planningContext
+            ? 'Продолжение ниже: выбери вариант или посмотри уже подтверждённый план.'
+            : 'Похоже, впереди прекрасная встреча.'
           : 'Спланируем в другой раз 😉' }}
       </p>
       <button

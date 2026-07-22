@@ -4,6 +4,7 @@ import {
   PLAN_OPTION_COMMENT_MAX_LENGTH,
   PLAN_OPTION_PLACE_MAX_LENGTH,
   type InvitationPlanOption,
+  type PlanConfirmationPayload,
   type PlanOptionPayload,
   type PlanOptionsPayload,
 } from '../types/invitation'
@@ -23,8 +24,22 @@ export type PlanOptionsValidation = {
   valid: boolean
 }
 
+export type PlanConfirmationStage = 'confirmed' | 'expired' | 'hidden' | 'ready'
+
+export type PersistedPlanSelectionState = {
+  isSaved: boolean
+  selectedOptionId: string | null
+}
+
 function padDatePart(value: number): string {
   return String(value).padStart(2, '0')
+}
+
+export function buildPlanConfirmationPayload(optionId: string): PlanConfirmationPayload {
+  return {
+    confirmed: true,
+    option_id: optionId,
+  }
 }
 
 export function localDateTimeToIso(value: string): string | null {
@@ -160,6 +175,17 @@ export function planDraftsToPayload(options: PlanOptionDraft[]): PlanOptionsPayl
   return { options: payloadOptions }
 }
 
+export function planOptionsPayloadHasExpiredDate(
+  payload: PlanOptionsPayload,
+  now: Date = new Date(),
+): boolean {
+  return payload.options.some((option) => {
+    const startsAt = new Date(option.starts_at).getTime()
+
+    return Number.isNaN(startsAt) || startsAt <= now.getTime()
+  })
+}
+
 export function sortPlanOptions(options: InvitationPlanOption[]): InvitationPlanOption[] {
   return [...options].sort((first, second) => (
     first.position - second.position || first.starts_at.localeCompare(second.starts_at)
@@ -175,6 +201,102 @@ export function findSelectedPlanOption(
   }
 
   return options.find(option => option.id === selectedOptionId) ?? null
+}
+
+export function isPlanOptionExpired(
+  option: InvitationPlanOption,
+  now: Date = new Date(),
+): boolean {
+  const startsAt = new Date(option.starts_at).getTime()
+
+  return Number.isNaN(startsAt) || startsAt <= now.getTime()
+}
+
+export function findUsableSelectedPlanOption(
+  options: InvitationPlanOption[],
+  selectedOptionId: string | null,
+  now: Date = new Date(),
+): InvitationPlanOption | null {
+  const selectedOption = findSelectedPlanOption(options, selectedOptionId)
+
+  return selectedOption && !isPlanOptionExpired(selectedOption, now) ? selectedOption : null
+}
+
+export function getPersistedPlanSelectionState(
+  options: InvitationPlanOption[],
+  selectedOptionId: string | null,
+  now: Date = new Date(),
+): PersistedPlanSelectionState {
+  const selectedOption = findUsableSelectedPlanOption(options, selectedOptionId, now)
+
+  return {
+    isSaved: Boolean(selectedOption),
+    selectedOptionId: selectedOption?.id ?? null,
+  }
+}
+
+export function shouldRefreshPlanSelection(error: InvitationApiError): boolean {
+  return error.status === 400 || error.status === 409
+}
+
+export async function refreshPlanSelectionAfterRejection<TSnapshot>(
+  error: InvitationApiError,
+  loadLatest: () => Promise<TSnapshot>,
+): Promise<TSnapshot | null> {
+  if (!shouldRefreshPlanSelection(error)) {
+    return null
+  }
+
+  return loadLatest()
+}
+
+export function reconcileServerExpiredSelectionId(
+  serverExpiredSelectionId: string | null,
+  selectedOptionId: string | null,
+  confirmedAt: string | null,
+): string | null {
+  if (
+    !serverExpiredSelectionId
+    || confirmedAt
+    || selectedOptionId !== serverExpiredSelectionId
+  ) {
+    return null
+  }
+
+  return serverExpiredSelectionId
+}
+
+export function shouldAnnounceNewFinalPlan(
+  previousConfirmedAt: string | null,
+  nextConfirmedAt: string | null,
+): boolean {
+  return previousConfirmedAt === null && nextConfirmedAt !== null
+}
+
+export function getPlanConfirmationStage(
+  responseStatus: 'accepted' | 'declined' | 'pending',
+  selectedOption: InvitationPlanOption | null,
+  confirmedAt: string | null,
+  now: Date = new Date(),
+  serverExpiredSelectionId: string | null = null,
+): PlanConfirmationStage {
+  if (responseStatus !== 'accepted') {
+    return 'hidden'
+  }
+
+  if (confirmedAt) {
+    return 'confirmed'
+  }
+
+  if (!selectedOption) {
+    return 'hidden'
+  }
+
+  if (serverExpiredSelectionId === selectedOption.id) {
+    return 'expired'
+  }
+
+  return isPlanOptionExpired(selectedOption, now) ? 'expired' : 'ready'
 }
 
 export function formatPlanOptionDate(value: string): string {
@@ -211,6 +333,33 @@ export function parsePlanningApiError(
       message: action === 'options'
         ? 'Варианты уже нельзя изменить: обнови страницу, чтобы увидеть сделанный выбор.'
         : 'Сейчас сохранить выбор нельзя. Обнови страницу и попробуй снова.',
+    }
+  }
+
+  return parsedError
+}
+
+export function parsePlanConfirmationApiError(error: unknown): InvitationApiError {
+  const parsedError = parseInvitationApiError(error)
+
+  if (parsedError.code === 'selected_option_expired') {
+    return {
+      ...parsedError,
+      message: 'Время выбранного варианта уже прошло. Обнови данные и предложи новые варианты.',
+    }
+  }
+
+  if (parsedError.status === 400) {
+    return {
+      ...parsedError,
+      message: 'Подтверждение должно быть явным. Проверь выбранный план и попробуй снова.',
+    }
+  }
+
+  if (parsedError.status === 409) {
+    return {
+      ...parsedError,
+      message: 'План изменился или ещё не готов к подтверждению. Обнови данные страницы.',
     }
   }
 

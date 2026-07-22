@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { InvitationCreatePayload } from '../types/invitation'
 import {
   buildManagementInvitationUrl,
@@ -15,6 +15,7 @@ import {
   parseInvitationApiError,
   parseInvitationResponseApiError,
   readManagementToken,
+  refreshInvitationResponseAfterConflict,
   validateInvitationPayload,
 } from '../utils/invitations'
 
@@ -173,9 +174,31 @@ describe('invitation response state', () => {
     expect(getInvitationResponsePresentation(status)).toMatchObject({ label, tone })
   })
 
+  it('keeps the accepted copy valid throughout planning and after confirmation', () => {
+    expect(getInvitationResponsePresentation('accepted').description).toContain('актуальный этап')
+  })
+
   it('provides actionable save errors', () => {
     expect(parseInvitationResponseApiError({ status: 400 }).message).toContain('«Да» или «Нет»')
     expect(parseInvitationResponseApiError({ status: 409 }).message).toContain('Обнови страницу')
     expect(parseInvitationResponseApiError({ status: 429 }).message).toContain('минуту')
+  })
+
+  it('refetches the authoritative invitation after a response conflict', async () => {
+    const loadLatest = vi.fn(async () => ({ confirmed_at: '2030-01-01T10:00:00Z' }))
+    const parsedError = parseInvitationResponseApiError({ status: 409 })
+
+    await expect(refreshInvitationResponseAfterConflict(parsedError, loadLatest)).resolves.toEqual({
+      confirmed_at: '2030-01-01T10:00:00Z',
+    })
+    expect(loadLatest).toHaveBeenCalledOnce()
+  })
+
+  it('does not refetch the invitation after a retryable response validation error', async () => {
+    const loadLatest = vi.fn(async () => ({ confirmed_at: null }))
+    const parsedError = parseInvitationResponseApiError({ status: 400 })
+
+    await expect(refreshInvitationResponseAfterConflict(parsedError, loadLatest)).resolves.toBeNull()
+    expect(loadLatest).not.toHaveBeenCalled()
   })
 })

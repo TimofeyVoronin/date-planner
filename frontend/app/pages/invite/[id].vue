@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import InvitationPreviewCard from '../../../components/invitation/InvitationPreviewCard.vue'
+import FinalPlanCard from '../../../components/planning/FinalPlanCard.vue'
 import PlanOptionSelector from '../../../components/planning/PlanOptionSelector.vue'
 import { useInvitationsApi } from '../../../composables/useInvitationsApi'
+import { useExpiryClock } from '../../../composables/useExpiryClock'
 import type {
   FinalInvitationResponseStatus,
   InvitationRecord,
@@ -12,8 +14,16 @@ import {
   isInvitationId,
   parseInvitationApiError,
   parseInvitationResponseApiError,
+  refreshInvitationResponseAfterConflict,
 } from '../../../utils/invitations'
-import { findSelectedPlanOption, parsePlanningApiError } from '../../../utils/planning'
+import {
+  findSelectedPlanOption,
+  findUsableSelectedPlanOption,
+  getPersistedPlanSelectionState,
+  parsePlanningApiError,
+  refreshPlanSelectionAfterRejection,
+  shouldAnnounceNewFinalPlan,
+} from '../../../utils/planning'
 
 type PageState = 'error' | 'loading' | 'ready'
 type ResponseSaveState = 'error' | 'idle' | 'saved' | 'saving'
@@ -32,7 +42,14 @@ const savedDuringThisVisit = ref(false)
 const selectedOptionId = ref<string | null>(null)
 const selectionSaveState = ref<SelectionSaveState>('idle')
 const selectionSaveError = ref('')
+const announceFinalPlan = ref(false)
+const announceFinalPlanOnNextSnapshot = ref(false)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
+const { currentTime, refreshCurrentTime, synchronizeServerTime } = useExpiryClock()
+const selectedPlanOption = computed(() => findSelectedPlanOption(
+  invitation.value?.plan_options ?? [],
+  invitation.value?.selected_option_id ?? null,
+))
 
 useHead({
   title: 'Личное приглашение — Date Planner',
@@ -41,6 +58,57 @@ useHead({
     { name: 'referrer', content: 'no-referrer' },
   ],
 })
+
+function applyPersistedPlanSelection(nextInvitation: InvitationRecord): void {
+  const selectionState = getPersistedPlanSelectionState(
+    nextInvitation.plan_options,
+    nextInvitation.selected_option_id,
+    currentTime.value,
+  )
+
+  selectedOptionId.value = selectionState.selectedOptionId
+  selectionSaveState.value = selectionState.isSaved ? 'saved' : 'idle'
+  selectionSaveError.value = ''
+}
+
+function applyPublicInvitationRecord(
+  nextInvitation: InvitationRecord,
+  announceNewFinalPlan = false,
+): void {
+  const previousConfirmedAt = invitation.value?.confirmed_at ?? null
+
+  synchronizeServerTime(nextInvitation.server_now)
+  invitation.value = nextInvitation
+  applyPersistedPlanSelection(nextInvitation)
+  announceFinalPlan.value = announceNewFinalPlan
+    && shouldAnnounceNewFinalPlan(previousConfirmedAt, nextInvitation.confirmed_at)
+}
+
+function applyPublicInvitationSnapshot(
+  nextInvitation: InvitationRecord,
+  announceNewFinalPlan = false,
+): void {
+  const shouldAnnounceNewFinalPlan = announceNewFinalPlan
+    || announceFinalPlanOnNextSnapshot.value
+
+  applyPublicInvitationRecord(nextInvitation, shouldAnnounceNewFinalPlan)
+  responseSaveState.value = isFinalInvitationResponseStatus(nextInvitation.response_status)
+    ? 'saved'
+    : 'idle'
+  pendingResponse.value = null
+  savedDuringThisVisit.value = false
+  announceFinalPlanOnNextSnapshot.value = false
+}
+
+function showPublicSnapshotRefreshFailure(error: unknown): void {
+  const parsedError = parseInvitationApiError(error)
+
+  errorMessage.value = parsedError.status === 404
+    ? parsedError.message
+    : `Данные приглашения уже изменились, но не удалось загрузить актуальное состояние. ${parsedError.message}`
+  isNotFound.value = parsedError.status === 404
+  pageState.value = 'error'
+}
 
 async function loadInvitation(): Promise<void> {
   pageState.value = 'loading'
@@ -55,16 +123,9 @@ async function loadInvitation(): Promise<void> {
   }
 
   try {
-    invitation.value = await api.getPublicInvitation(invitationId.value)
-    responseSaveState.value = isFinalInvitationResponseStatus(invitation.value.response_status)
-      ? 'saved'
-      : 'idle'
-    savedDuringThisVisit.value = false
-    selectedOptionId.value = findSelectedPlanOption(
-      invitation.value.plan_options,
-      invitation.value.selected_option_id,
-    )?.id ?? null
-    selectionSaveState.value = selectedOptionId.value ? 'saved' : 'idle'
+    const nextInvitation = await api.getPublicInvitation(invitationId.value)
+
+    applyPublicInvitationSnapshot(nextInvitation)
     pageState.value = 'ready'
   }
   catch (error: unknown) {
@@ -86,20 +147,55 @@ async function saveResponse(status: FinalInvitationResponseStatus): Promise<void
   responseSaveState.value = 'saving'
 
   try {
-    invitation.value = await api.saveInvitationResponse(invitationId.value, {
+    const nextInvitation = await api.saveInvitationResponse(invitationId.value, {
       response_status: status,
     })
-    selectedOptionId.value = invitation.value.selected_option_id
+
+    applyPublicInvitationRecord(nextInvitation, true)
     savedDuringThisVisit.value = true
     responseSaveState.value = 'saved'
   }
   catch (error: unknown) {
-    responseSaveError.value = parseInvitationResponseApiError(error).message
+    const parsedError = parseInvitationResponseApiError(error)
+
+    try {
+      const nextInvitation = await refreshInvitationResponseAfterConflict(
+        parsedError,
+        () => api.getPublicInvitation(invitationId.value),
+      )
+
+      if (nextInvitation) {
+        applyPublicInvitationSnapshot(nextInvitation, true)
+        return
+      }
+    }
+    catch (refreshError: unknown) {
+      responseSaveState.value = 'error'
+      announceFinalPlanOnNextSnapshot.value = true
+      showPublicSnapshotRefreshFailure(refreshError)
+      return
+    }
+
+    responseSaveError.value = parsedError.message
     responseSaveState.value = 'error'
   }
 }
 
 function choosePlanOption(optionId: string): void {
+  const now = refreshCurrentTime()
+  const selectedOption = findUsableSelectedPlanOption(
+    invitation.value?.plan_options ?? [],
+    optionId,
+    now,
+  )
+
+  if (!selectedOption) {
+    selectedOptionId.value = null
+    selectionSaveError.value = 'Время этого варианта уже прошло. Выбери другую актуальную дату.'
+    selectionSaveState.value = 'error'
+    return
+  }
+
   selectedOptionId.value = optionId
   selectionSaveError.value = ''
   selectionSaveState.value = optionId === invitation.value?.selected_option_id
@@ -112,18 +208,51 @@ async function savePlanSelection(): Promise<void> {
     return
   }
 
+  const selectedOption = findUsableSelectedPlanOption(
+    invitation.value?.plan_options ?? [],
+    selectedOptionId.value,
+    refreshCurrentTime(),
+  )
+
+  if (!selectedOption) {
+    selectedOptionId.value = null
+    selectionSaveError.value = 'Время этого варианта уже прошло. Выбери другую актуальную дату.'
+    selectionSaveState.value = 'error'
+    return
+  }
+
   selectionSaveState.value = 'saving'
   selectionSaveError.value = ''
 
   try {
-    invitation.value = await api.savePlanSelection(invitationId.value, {
+    const nextInvitation = await api.savePlanSelection(invitationId.value, {
       option_id: selectedOptionId.value,
     })
-    selectedOptionId.value = invitation.value.selected_option_id
-    selectionSaveState.value = 'saved'
+
+    applyPublicInvitationRecord(nextInvitation, true)
   }
   catch (error: unknown) {
-    selectionSaveError.value = parsePlanningApiError(error, 'selection').message
+    const parsedError = parsePlanningApiError(error, 'selection')
+
+    try {
+      const nextInvitation = await refreshPlanSelectionAfterRejection(
+        parsedError,
+        () => api.getPublicInvitation(invitationId.value),
+      )
+
+      if (nextInvitation) {
+        applyPublicInvitationSnapshot(nextInvitation, true)
+        return
+      }
+    }
+    catch (refreshError: unknown) {
+      selectionSaveState.value = 'error'
+      announceFinalPlanOnNextSnapshot.value = true
+      showPublicSnapshotRefreshFailure(refreshError)
+      return
+    }
+
+    selectionSaveError.value = parsedError.message
     selectionSaveState.value = 'error'
   }
 }
@@ -178,6 +307,7 @@ onMounted(loadInvitation)
           :author-name="invitation.author_name"
           :initial-status="invitation.response_status"
           :message="invitation.message"
+          :planning-context="true"
           :recipient-name="invitation.recipient_name"
           @answered="saveResponse"
         />
@@ -212,8 +342,21 @@ onMounted(loadInvitation)
           </button>
         </div>
 
+        <template v-if="invitation.confirmed_at">
+          <FinalPlanCard
+            v-if="selectedPlanOption"
+            :announce="announceFinalPlan"
+            :confirmed-at="invitation.confirmed_at"
+            :option="selectedPlanOption"
+          />
+          <section v-else class="plan-data-error" role="alert">
+            Итоговый план не удалось загрузить. Обнови страницу и попробуй снова.
+          </section>
+        </template>
+
         <section
-          v-if="invitation.response_status === 'accepted' && invitation.plan_options.length === 0"
+          v-else-if="invitation.response_status === 'accepted'
+            && invitation.plan_options.length === 0"
           class="plan-waiting"
           aria-labelledby="plan-waiting-title"
         >
@@ -226,6 +369,7 @@ onMounted(loadInvitation)
 
         <PlanOptionSelector
           v-else-if="invitation.response_status === 'accepted'"
+          :current-time="currentTime"
           :model-value="selectedOptionId"
           :options="invitation.plan_options"
           :persisted-option-id="invitation.selected_option_id"

@@ -3,6 +3,7 @@ import type {
   InvitationCreateResponse,
   InvitationRecord,
   InvitationResponsePayload,
+  PlanConfirmationPayload,
   PlanOptionsPayload,
   PlanSelectionPayload,
 } from '../types/invitation'
@@ -83,7 +84,26 @@ export function useInvitationsApi() {
     )
   }
 
+  function confirmPlan(
+    id: string,
+    token: string,
+    payload: PlanConfirmationPayload,
+  ): Promise<InvitationRecord> {
+    return $fetch<InvitationRecord>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/confirmation/`,
+      {
+        baseURL,
+        method: 'PUT',
+        body: payload,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+  }
+
   return {
+    confirmPlan,
     createInvitation,
     getManagedInvitation,
     getPublicInvitation,

@@ -9,6 +9,7 @@ import {
 } from '../types/invitation'
 
 export type InvitationApiError = {
+  code: string | null
   fieldErrors: InvitationValidationErrors
   message: string
   status: number | null
@@ -177,7 +178,7 @@ export function getInvitationResponsePresentation(
       tone: 'accepted',
       icon: '💘',
       label: 'Приглашение принято',
-      description: 'Получатель ответил «Да». Можно переходить к планированию.',
+      description: 'Получатель ответил «Да». Ниже показан актуальный этап подготовки свидания.',
     }
   }
 
@@ -218,9 +219,25 @@ export function parseInvitationResponseApiError(error: unknown): InvitationApiEr
   return parsedError
 }
 
+export function shouldRefreshInvitationResponse(error: InvitationApiError): boolean {
+  return error.status === 409
+}
+
+export async function refreshInvitationResponseAfterConflict<TSnapshot>(
+  error: InvitationApiError,
+  loadLatest: () => Promise<TSnapshot>,
+): Promise<TSnapshot | null> {
+  if (!shouldRefreshInvitationResponse(error)) {
+    return null
+  }
+
+  return loadLatest()
+}
+
 export function parseInvitationApiError(error: unknown): InvitationApiError {
   const status = extractStatus(error)
   const responseData = extractResponseData(error)
+  const code = firstErrorMessage(responseData?.code)
   const fieldErrors: InvitationValidationErrors = {}
 
   for (const field of INVITATION_FIELDS) {
@@ -233,6 +250,7 @@ export function parseInvitationApiError(error: unknown): InvitationApiError {
 
   if (status === 429) {
     return {
+      code,
       status,
       fieldErrors,
       message: 'Слишком много запросов. Подожди минуту и попробуй снова.',
@@ -241,6 +259,7 @@ export function parseInvitationApiError(error: unknown): InvitationApiError {
 
   if (status === 404) {
     return {
+      code,
       status,
       fieldErrors,
       message: 'Приглашение не найдено или ссылка больше не действует.',
@@ -249,6 +268,7 @@ export function parseInvitationApiError(error: unknown): InvitationApiError {
 
   if (status === 401 || status === 403) {
     return {
+      code,
       status,
       fieldErrors,
       message: 'Секретная ссылка не подходит для этого приглашения.',
@@ -257,6 +277,7 @@ export function parseInvitationApiError(error: unknown): InvitationApiError {
 
   if (status === 400) {
     return {
+      code,
       status,
       fieldErrors,
       message: hasInvitationValidationErrors(fieldErrors)
@@ -266,6 +287,7 @@ export function parseInvitationApiError(error: unknown): InvitationApiError {
   }
 
   return {
+    code,
     status,
     fieldErrors,
     message: 'Не удалось связаться с сервисом. Проверь соединение и попробуй снова.',

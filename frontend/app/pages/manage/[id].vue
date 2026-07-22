@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import FinalPlanCard from '../../../components/planning/FinalPlanCard.vue'
 import PlanOptionsEditor from '../../../components/planning/PlanOptionsEditor.vue'
 import { copyTextWithFallback } from '../../../composables/useClipboard'
 import { useInvitationsApi } from '../../../composables/useInvitationsApi'
 import { useManagementToken } from '../../../composables/useManagementToken'
+import { useExpiryClock } from '../../../composables/useExpiryClock'
 import type { InvitationRecord, PlanOptionsPayload } from '../../../types/invitation'
 import {
   buildPublicInvitationUrl,
@@ -12,14 +14,21 @@ import {
   parseInvitationApiError,
 } from '../../../utils/invitations'
 import {
+  buildPlanConfirmationPayload,
   findSelectedPlanOption,
   formatPlanOptionDate,
+  getPlanConfirmationStage,
+  parsePlanConfirmationApiError,
   parsePlanningApiError,
+  planOptionsPayloadHasExpiredDate,
+  reconcileServerExpiredSelectionId,
+  shouldAnnounceNewFinalPlan,
 } from '../../../utils/planning'
 
 type PageState = 'error' | 'loading' | 'missing-token' | 'ready'
 type StatusRefreshState = 'error' | 'idle' | 'loading' | 'success'
 type PlanSaveState = 'error' | 'idle' | 'saving' | 'success'
+type ConfirmationActionState = 'error' | 'idle' | 'saving'
 
 const route = useRoute()
 const api = useInvitationsApi()
@@ -33,14 +42,27 @@ const statusRefreshState = ref<StatusRefreshState>('idle')
 const statusRefreshError = ref('')
 const planSaveState = ref<PlanSaveState>('idle')
 const planSaveError = ref('')
+const confirmationActionState = ref<ConfirmationActionState>('idle')
+const confirmationError = ref('')
+const confirmationConflict = ref(false)
+const confirmationJustCompleted = ref(false)
+const serverExpiredSelectionId = ref<string | null>(null)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const { clearManagementToken, takeManagementToken } = useManagementToken(invitationId)
+const { currentTime, refreshCurrentTime, synchronizeServerTime } = useExpiryClock()
 const responsePresentation = computed(() => getInvitationResponsePresentation(
   invitation.value?.response_status ?? 'pending',
 ))
 const selectedPlanOption = computed(() => findSelectedPlanOption(
   invitation.value?.plan_options ?? [],
   invitation.value?.selected_option_id ?? null,
+))
+const confirmationStage = computed(() => getPlanConfirmationStage(
+  invitation.value?.response_status ?? 'pending',
+  selectedPlanOption.value,
+  invitation.value?.confirmed_at ?? null,
+  currentTime.value,
+  serverExpiredSelectionId.value,
 ))
 
 useHead({
@@ -50,6 +72,16 @@ useHead({
     { name: 'referrer', content: 'no-referrer' },
   ],
 })
+
+function applyManagedInvitation(nextInvitation: InvitationRecord): void {
+  synchronizeServerTime(nextInvitation.server_now)
+  serverExpiredSelectionId.value = reconcileServerExpiredSelectionId(
+    serverExpiredSelectionId.value,
+    nextInvitation.selected_option_id,
+    nextInvitation.confirmed_at,
+  )
+  invitation.value = nextInvitation
+}
 
 async function loadManagedInvitation(): Promise<void> {
   pageState.value = 'loading'
@@ -70,9 +102,15 @@ async function loadManagedInvitation(): Promise<void> {
   }
 
   try {
-    invitation.value = await api.getManagedInvitation(invitationId.value, token)
+    const nextInvitation = await api.getManagedInvitation(invitationId.value, token)
+
+    applyManagedInvitation(nextInvitation)
     publicUrl.value = buildPublicInvitationUrl(window.location.origin, invitationId.value)
     planSaveState.value = 'idle'
+    confirmationActionState.value = 'idle'
+    confirmationError.value = ''
+    confirmationConflict.value = false
+    confirmationJustCompleted.value = false
     pageState.value = 'ready'
   }
   catch (error: unknown) {
@@ -89,7 +127,10 @@ async function loadManagedInvitation(): Promise<void> {
 }
 
 async function refreshResponseStatus(): Promise<void> {
-  if (statusRefreshState.value === 'loading') {
+  if (
+    statusRefreshState.value === 'loading'
+    || confirmationActionState.value === 'saving'
+  ) {
     return
   }
 
@@ -104,9 +145,19 @@ async function refreshResponseStatus(): Promise<void> {
   statusRefreshError.value = ''
 
   try {
-    invitation.value = await api.getManagedInvitation(invitationId.value, token)
+    const nextInvitation = await api.getManagedInvitation(invitationId.value, token)
+    const announceNewFinalPlan = shouldAnnounceNewFinalPlan(
+      invitation.value?.confirmed_at ?? null,
+      nextInvitation.confirmed_at,
+    )
+
+    applyManagedInvitation(nextInvitation)
     statusRefreshState.value = 'success'
     planSaveState.value = 'idle'
+    confirmationActionState.value = 'idle'
+    confirmationError.value = ''
+    confirmationConflict.value = false
+    confirmationJustCompleted.value = announceNewFinalPlan
   }
   catch (error: unknown) {
     const parsedError = parseInvitationApiError(error)
@@ -124,6 +175,67 @@ async function refreshResponseStatus(): Promise<void> {
   }
 }
 
+async function confirmSelectedPlan(): Promise<void> {
+  if (
+    confirmationActionState.value === 'saving'
+    || statusRefreshState.value === 'loading'
+  ) {
+    return
+  }
+
+  refreshCurrentTime()
+
+  const expectedSelectedOption = selectedPlanOption.value
+
+  if (confirmationStage.value !== 'ready' || !expectedSelectedOption) {
+    return
+  }
+
+  const token = takeManagementToken()
+
+  if (!token) {
+    pageState.value = 'missing-token'
+    return
+  }
+
+  confirmationActionState.value = 'saving'
+  confirmationError.value = ''
+  confirmationConflict.value = false
+  confirmationJustCompleted.value = false
+
+  try {
+    const nextInvitation = await api.confirmPlan(
+      invitationId.value,
+      token,
+      buildPlanConfirmationPayload(expectedSelectedOption.id),
+    )
+
+    applyManagedInvitation(nextInvitation)
+    confirmationActionState.value = 'idle'
+    confirmationJustCompleted.value = true
+  }
+  catch (error: unknown) {
+    const parsedError = parsePlanConfirmationApiError(error)
+
+    if (parsedError.status === 401 || parsedError.status === 403) {
+      clearManagementToken()
+      canRetry.value = false
+      errorMessage.value = parsedError.message
+      pageState.value = 'error'
+      return
+    }
+
+    if (parsedError.code === 'selected_option_expired') {
+      serverExpiredSelectionId.value = invitation.value?.selected_option_id ?? null
+    }
+
+    confirmationError.value = parsedError.message
+    confirmationConflict.value = parsedError.status === 409
+      || parsedError.code === 'selected_option_expired'
+    confirmationActionState.value = 'error'
+  }
+}
+
 function markPlanDirty(): void {
   planSaveState.value = 'idle'
   planSaveError.value = ''
@@ -131,6 +243,12 @@ function markPlanDirty(): void {
 
 async function savePlanningOptions(payload: PlanOptionsPayload): Promise<void> {
   if (planSaveState.value === 'saving') {
+    return
+  }
+
+  if (planOptionsPayloadHasExpiredDate(payload, refreshCurrentTime())) {
+    planSaveError.value = 'Одна из дат уже наступила. Обнови время и сохрани варианты снова.'
+    planSaveState.value = 'error'
     return
   }
 
@@ -145,8 +263,11 @@ async function savePlanningOptions(payload: PlanOptionsPayload): Promise<void> {
   planSaveError.value = ''
 
   try {
-    invitation.value = await api.savePlanOptions(invitationId.value, token, payload)
+    const nextInvitation = await api.savePlanOptions(invitationId.value, token, payload)
+
+    applyManagedInvitation(nextInvitation)
     planSaveState.value = 'success'
+    confirmationJustCompleted.value = false
   }
   catch (error: unknown) {
     const parsedError = parsePlanningApiError(error, 'options')
@@ -253,7 +374,8 @@ onMounted(loadManagedInvitation)
             </div>
             <button
               type="button"
-              :disabled="statusRefreshState === 'loading'"
+              :disabled="statusRefreshState === 'loading'
+                || confirmationActionState === 'saving'"
               aria-label="Загрузить актуальный ответ получателя"
               @click="refreshResponseStatus"
             >
@@ -275,35 +397,122 @@ onMounted(loadManagedInvitation)
             </p>
           </section>
 
+          <template v-if="confirmationStage === 'confirmed'">
+            <FinalPlanCard
+              v-if="selectedPlanOption && invitation.confirmed_at"
+              :announce="confirmationJustCompleted"
+              :confirmed-at="invitation.confirmed_at"
+              :option="selectedPlanOption"
+            />
+            <section v-else class="plan-data-error" role="alert">
+              Подтверждённый план не удалось загрузить. Обнови данные страницы.
+            </section>
+          </template>
+
           <section
-            v-if="invitation.response_status === 'accepted' && invitation.selected_option_id"
-            class="plan-locked"
-            aria-labelledby="selected-plan-title"
+            v-else-if="confirmationStage === 'ready'"
+            class="plan-confirmation"
+            aria-labelledby="plan-confirmation-title"
+            :aria-busy="confirmationActionState === 'saving' || statusRefreshState === 'loading'"
           >
-            <span class="plan-locked__icon" aria-hidden="true">💞</span>
-            <div>
-              <p>Выбранный вариант</p>
-              <h2 id="selected-plan-title">План свидания согласован</h2>
-              <template v-if="selectedPlanOption">
-                <time :datetime="selectedPlanOption.starts_at">
-                  {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}
-                </time>
-                <strong>{{ selectedPlanOption.place }}</strong>
-                <span v-if="selectedPlanOption.comment">{{ selectedPlanOption.comment }}</span>
-              </template>
-              <span v-else>Обнови страницу, чтобы загрузить выбранный вариант.</span>
+            <header>
+              <span aria-hidden="true">💞</span>
+              <div>
+                <p>Финальный шаг автора</p>
+                <h2 id="plan-confirmation-title">Подтверди выбранный план</h2>
+              </div>
+            </header>
+
+            <div v-if="selectedPlanOption" class="plan-confirmation__summary">
+              <time :datetime="selectedPlanOption.starts_at">
+                {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}
+              </time>
+              <strong>{{ selectedPlanOption.place }}</strong>
+              <span v-if="selectedPlanOption.comment">{{ selectedPlanOption.comment }}</span>
               <small v-if="invitation.selected_at">
-                Выбрано: {{ formatDate(invitation.selected_at) }}
+                Получатель выбрал {{ formatDate(invitation.selected_at) }}
               </small>
             </div>
-            <p class="plan-locked__notice">
-              <span aria-hidden="true">🔒</span>
-              После выбора получателя набор вариантов заблокирован от изменений.
+            <p v-else class="plan-data-error" role="alert">
+              Выбранный вариант не найден. Обнови данные перед подтверждением.
             </p>
+
+            <p id="plan-confirmation-warning" class="plan-confirmation__warning">
+              <span aria-hidden="true">⚠️</span>
+              <strong>Это действие необратимо.</strong>
+              После подтверждения получатель больше не сможет менять вариант.
+            </p>
+
+            <p
+              v-if="confirmationActionState === 'error'"
+              class="plan-confirmation__error"
+              role="alert"
+            >
+              {{ confirmationError }}
+            </p>
+
+            <button
+              v-if="confirmationConflict"
+              type="button"
+              :disabled="statusRefreshState === 'loading'
+                || confirmationActionState === 'saving'"
+              @click="refreshResponseStatus"
+            >
+              {{ statusRefreshState === 'loading' ? 'Обновляем данные…' : 'Обновить данные' }}
+            </button>
+            <button
+              v-else
+              type="button"
+              aria-describedby="plan-confirmation-warning"
+              :disabled="confirmationActionState === 'saving'
+                || statusRefreshState === 'loading'
+                || !selectedPlanOption"
+              @click="confirmSelectedPlan"
+            >
+              <span aria-hidden="true">
+                {{ confirmationActionState === 'saving' ? '⏳' : '✓' }}
+              </span>
+              {{ confirmationActionState === 'saving'
+                ? 'Подтверждаем план…'
+                : 'Подтвердить окончательно' }}
+            </button>
           </section>
+
+          <template v-else-if="confirmationStage === 'expired'">
+            <section
+              class="plan-recovery"
+              aria-labelledby="plan-recovery-title"
+              role="status"
+              aria-live="polite"
+            >
+              <span class="plan-recovery__icon" aria-hidden="true">🕰️</span>
+              <div>
+                <p>Нужно обновить план</p>
+                <h2 id="plan-recovery-title">Время выбранного варианта уже прошло</h2>
+                <p v-if="selectedPlanOption">
+                  Получатель выбирал «{{ selectedPlanOption.place }}» —
+                  {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}.
+                </p>
+                <p>
+                  Исправь даты или предложи новый набор ниже. Сохранение заменит устаревшие
+                  варианты и сбросит прежний выбор, чтобы получатель мог выбрать снова.
+                </p>
+              </div>
+            </section>
+
+            <PlanOptionsEditor
+              :current-time="currentTime"
+              :options="invitation.plan_options"
+              :save-error="planSaveError"
+              :save-state="planSaveState"
+              @dirty="markPlanDirty"
+              @save="savePlanningOptions"
+            />
+          </template>
 
           <PlanOptionsEditor
             v-else-if="invitation.response_status === 'accepted'"
+            :current-time="currentTime"
             :options="invitation.plan_options"
             :save-error="planSaveError"
             :save-state="planSaveState"

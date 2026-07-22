@@ -1,6 +1,8 @@
 """Tests for creating and retrieving personal invitations."""
 
 import uuid
+from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
 from rest_framework import status
@@ -47,6 +49,8 @@ def test_create_invitation_persists_and_returns_public_fields() -> None:
     assert body["plan_options"] == []
     assert body["selected_option_id"] is None
     assert body["selected_at"] is None
+    assert body["confirmed_at"] is None
+    assert body["server_now"]
     assert body["management_token"]
     assert "management_token_hash" not in body
 
@@ -54,8 +58,10 @@ def test_create_invitation_persists_and_returns_public_fields() -> None:
 def test_read_invitation_by_uuid() -> None:
     """A public UUID resolves only its matching invitation."""
     invitation = Invitation.objects.create(**invitation_payload())
+    server_now = datetime(2026, 7, 22, 16, 30, tzinfo=UTC)
 
-    response = APIClient().get(f"/api/v1/invitations/{invitation.pk}/")
+    with patch("apps.common.serializers.now", return_value=server_now):
+        response = APIClient().get(f"/api/v1/invitations/{invitation.pk}/")
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {
@@ -66,9 +72,31 @@ def test_read_invitation_by_uuid() -> None:
         "plan_options": [],
         "selected_option_id": None,
         "selected_at": None,
+        "confirmed_at": None,
+        "server_now": server_now.isoformat().replace("+00:00", "Z"),
         "created_at": invitation.created_at.isoformat().replace("+00:00", "Z"),
         "updated_at": invitation.updated_at.isoformat().replace("+00:00", "Z"),
     }
+
+
+def test_server_now_input_is_ignored_and_never_persisted() -> None:
+    """A caller cannot choose the server snapshot or create a model attribute for it."""
+    supplied_server_now = "2000-01-01T00:00:00Z"
+    actual_server_now = datetime(2026, 7, 22, 16, 45, tzinfo=UTC)
+    payload = {
+        **invitation_payload(),
+        "server_now": supplied_server_now,
+    }
+
+    with patch("apps.common.serializers.now", return_value=actual_server_now):
+        response = APIClient().post("/api/v1/invitations/", payload, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.json()["server_now"] == actual_server_now.isoformat().replace("+00:00", "Z")
+    assert response.json()["server_now"] != supplied_server_now
+    invitation = Invitation.objects.get(pk=response.json()["id"])
+    assert not hasattr(invitation, "server_now")
+    assert "server_now" not in {field.name for field in Invitation._meta.get_fields()}
 
 
 @pytest.mark.parametrize("field", ["author_name", "recipient_name"])

@@ -166,6 +166,9 @@ class InvitationResponseView(NoStoreResponseMixin, generics.GenericAPIView):
                 description="The response status must be accepted or declined."
             ),
             status.HTTP_404_NOT_FOUND: OpenApiResponse(description="Invitation not found."),
+            status.HTTP_409_CONFLICT: OpenApiResponse(
+                description="A confirmed invitation response cannot be changed."
+            ),
             status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
                 description="The invitation response rate limit was exceeded."
             ),
@@ -180,6 +183,14 @@ class InvitationResponseView(NoStoreResponseMixin, generics.GenericAPIView):
 
         with transaction.atomic():
             invitation = self.get_object()
+            confirmation_exists = invitation.plan_options.filter(
+                confirmed_at__isnull=False
+            ).exists()
+            if confirmation_exists and invitation.response_status != response_status:
+                return Response(
+                    {"detail": "The response cannot change after final confirmation."},
+                    status=status.HTTP_409_CONFLICT,
+                )
             clear_selection = (
                 response_status == Invitation.ResponseStatus.DECLINED
                 and invitation.plan_options.filter(selected_at__isnull=False).exists()

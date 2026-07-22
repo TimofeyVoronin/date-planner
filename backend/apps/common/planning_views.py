@@ -48,7 +48,10 @@ class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
             ),
             status.HTTP_404_NOT_FOUND: OpenApiResponse(description="Invitation not found."),
             status.HTTP_409_CONFLICT: OpenApiResponse(
-                description="The invitation is not accepted or an option is already selected."
+                description=(
+                    "The invitation is not accepted, or its selection is still future-dated "
+                    "or already confirmed."
+                )
             ),
             status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
                 description="The planning rate limit was exceeded."
@@ -66,11 +69,21 @@ class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
                     {"detail": "Planning is available only for an accepted invitation."},
                     status=status.HTTP_409_CONFLICT,
                 )
-            if invitation.plan_options.filter(selected_at__isnull=False).exists():
-                return Response(
-                    {"detail": "Planning options cannot change after a selection."},
-                    status=status.HTTP_409_CONFLICT,
+            current_selection = invitation.plan_options.filter(selected_at__isnull=False).first()
+            if current_selection is not None:
+                selection_is_replaceable = (
+                    current_selection.confirmed_at is None and current_selection.starts_at <= now()
                 )
+                if not selection_is_replaceable:
+                    return Response(
+                        {
+                            "detail": (
+                                "Planning options cannot change while the selection is future "
+                                "or confirmed."
+                            )
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
 
             submitted_options = input_serializer.validated_data["options"]
             existing_options = list(invitation.plan_options.all())
@@ -129,7 +142,10 @@ class InvitationSelectionView(NoStoreResponseMixin, generics.GenericAPIView):
             ),
             status.HTTP_404_NOT_FOUND: OpenApiResponse(description="Invitation not found."),
             status.HTTP_409_CONFLICT: OpenApiResponse(
-                description="The invitation has not been accepted."
+                description=(
+                    "The invitation has not been accepted or its selected plan is already "
+                    "confirmed."
+                )
             ),
             status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
                 description="The planning rate limit was exceeded."
@@ -163,6 +179,16 @@ class InvitationSelectionView(NoStoreResponseMixin, generics.GenericAPIView):
                 )
 
             current_selection = invitation.plan_options.filter(selected_at__isnull=False).first()
+            if (
+                current_selection is not None
+                and current_selection.confirmed_at is not None
+                and current_selection.pk != selected_option.pk
+            ):
+                return Response(
+                    {"detail": "The confirmed planning option cannot be changed."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
             if current_selection is None or current_selection.pk != selected_option.pk:
                 selected_at = now()
                 if selected_option.starts_at <= selected_at:
@@ -174,6 +200,8 @@ class InvitationSelectionView(NoStoreResponseMixin, generics.GenericAPIView):
                 selected_option.selected_at = selected_at
                 selected_option.save(update_fields=("selected_at",))
                 invitation.save(update_fields=("updated_at",))
+
+            invitation._selected_plan_option_cache = selected_option
 
             output_data = InvitationSerializer(
                 invitation,

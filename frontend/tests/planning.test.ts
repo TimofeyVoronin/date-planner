@@ -1,12 +1,23 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { InvitationPlanOption } from '../types/invitation'
 import {
+  buildPlanConfirmationPayload,
   findSelectedPlanOption,
+  findUsableSelectedPlanOption,
   getMinimumPlanDateTime,
+  getPersistedPlanSelectionState,
+  getPlanConfirmationStage,
   isoToLocalDateTime,
+  isPlanOptionExpired,
   localDateTimeToIso,
   parsePlanningApiError,
+  parsePlanConfirmationApiError,
   planDraftsToPayload,
+  planOptionsPayloadHasExpiredDate,
+  reconcileServerExpiredSelectionId,
+  refreshPlanSelectionAfterRejection,
+  shouldRefreshPlanSelection,
+  shouldAnnounceNewFinalPlan,
   sortPlanOptions,
   validatePlanOptionDrafts,
   type PlanOptionDraft,
@@ -110,6 +121,23 @@ describe('planning validation and payload', () => {
       ],
     })
   })
+
+  it('rechecks serialized option dates at the exact save instant', () => {
+    const now = new Date('2030-01-01T12:00:00Z')
+
+    expect(planOptionsPayloadHasExpiredDate({
+      options: [
+        { starts_at: now.toISOString(), place: 'Кафе', comment: '' },
+        { starts_at: '2030-01-01T13:00:00Z', place: 'Парк', comment: '' },
+      ],
+    }, now)).toBe(true)
+    expect(planOptionsPayloadHasExpiredDate({
+      options: [
+        { starts_at: '2030-01-01T12:00:01Z', place: 'Кафе', comment: '' },
+        { starts_at: '2030-01-01T13:00:00Z', place: 'Парк', comment: '' },
+      ],
+    }, now)).toBe(false)
+  })
 })
 
 describe('persisted planning state', () => {
@@ -129,9 +157,148 @@ describe('persisted planning state', () => {
     expect(findSelectedPlanOption(options, null)).toBeNull()
   })
 
+  it('binds final confirmation to the option shown to the author', () => {
+    expect(buildPlanConfirmationPayload('shown-option')).toEqual({
+      confirmed: true,
+      option_id: 'shown-option',
+    })
+  })
+
+  it('treats an option at or before the current instant as expired', () => {
+    const now = new Date('2030-01-01T12:00:00Z')
+
+    expect(isPlanOptionExpired(option('past', 1, '2030-01-01T11:59:59Z'), now)).toBe(true)
+    expect(isPlanOptionExpired(option('boundary', 1, now.toISOString()), now)).toBe(true)
+    expect(isPlanOptionExpired(option('future', 1, '2030-01-01T12:00:01Z'), now)).toBe(false)
+  })
+
+  it('does not expose an expired persisted selection as a usable choice', () => {
+    const now = new Date('2030-01-01T12:00:00Z')
+    const choices = [
+      option('expired', 1, '2030-01-01T12:00:00Z'),
+      option('future', 2, '2030-01-01T12:00:01Z'),
+    ]
+
+    expect(findUsableSelectedPlanOption(choices, 'expired', now)).toBeNull()
+    expect(findUsableSelectedPlanOption(choices, 'future', now)?.id).toBe('future')
+  })
+
+  it('replaces an attempted local choice with the authoritative persisted snapshot', () => {
+    const now = new Date('2030-01-01T12:00:00Z')
+    const choices = [
+      option('attempted-locally', 1, '2030-01-01T13:00:00Z'),
+      option('selected-on-server', 2, '2030-01-01T14:00:00Z'),
+    ]
+
+    expect(getPersistedPlanSelectionState(choices, 'selected-on-server', now)).toEqual({
+      isSaved: true,
+      selectedOptionId: 'selected-on-server',
+    })
+    expect(getPersistedPlanSelectionState(choices, null, now)).toEqual({
+      isSaved: false,
+      selectedOptionId: null,
+    })
+  })
+
   it('presents actionable validation and conflict errors', () => {
-    expect(parsePlanningApiError({ status: 400 }, 'selection').message).toContain('недоступен')
+    const unavailableSelection = parsePlanningApiError({ status: 400 }, 'selection')
+    const conflictedSelection = parsePlanningApiError({ status: 409 }, 'selection')
+
+    expect(unavailableSelection.message).toContain('недоступен')
     expect(parsePlanningApiError({ status: 409 }, 'options').message).toContain('нельзя изменить')
     expect(parsePlanningApiError({ status: 429 }, 'options').message).toContain('минуту')
+    expect(shouldRefreshPlanSelection(unavailableSelection)).toBe(true)
+    expect(shouldRefreshPlanSelection(conflictedSelection)).toBe(true)
+    expect(shouldRefreshPlanSelection(parsePlanningApiError({ status: 429 }, 'selection')))
+      .toBe(false)
+  })
+
+  it.each([400, 409])('refetches the authoritative snapshot after selection status %i', async (
+    status,
+  ) => {
+    const loadLatest = vi.fn(async () => ({ confirmed_at: '2030-01-01T10:00:00Z' }))
+    const parsedError = parsePlanningApiError({ status }, 'selection')
+
+    await expect(refreshPlanSelectionAfterRejection(parsedError, loadLatest)).resolves.toEqual({
+      confirmed_at: '2030-01-01T10:00:00Z',
+    })
+    expect(loadLatest).toHaveBeenCalledOnce()
+  })
+
+  it('does not refetch the snapshot for a retryable transport error', async () => {
+    const loadLatest = vi.fn(async () => ({ confirmed_at: null }))
+    const parsedError = parsePlanningApiError({ status: 429 }, 'selection')
+
+    await expect(refreshPlanSelectionAfterRejection(parsedError, loadLatest)).resolves.toBeNull()
+    expect(loadLatest).not.toHaveBeenCalled()
+  })
+
+  it('separates ready, expired, and already confirmed planning states', () => {
+    const now = new Date('2029-12-31T12:00:00Z')
+    const futureOption = option('future', 1, '2030-01-01T12:00:00Z')
+    const expiredOption = option('expired', 1, '2029-12-31T11:59:59Z')
+
+    expect(getPlanConfirmationStage('pending', null, null, now)).toBe('hidden')
+    expect(getPlanConfirmationStage('declined', futureOption, null, now)).toBe('hidden')
+    expect(getPlanConfirmationStage('accepted', null, null, now)).toBe('hidden')
+    expect(getPlanConfirmationStage(
+      'accepted',
+      null,
+      '2029-12-31T10:00:00Z',
+      now,
+    )).toBe('confirmed')
+    expect(getPlanConfirmationStage('accepted', futureOption, null, now)).toBe('ready')
+    expect(getPlanConfirmationStage(
+      'accepted',
+      futureOption,
+      null,
+      now,
+      futureOption.id,
+    )).toBe('expired')
+    expect(getPlanConfirmationStage('accepted', expiredOption, null, now)).toBe('expired')
+    expect(getPlanConfirmationStage(
+      'accepted',
+      expiredOption,
+      '2029-12-31T10:00:00Z',
+      now,
+    )).toBe(
+      'confirmed',
+    )
+  })
+
+  it('retains a server-expired marker only for the same unconfirmed selection', () => {
+    expect(reconcileServerExpiredSelectionId('selected', 'selected', null)).toBe('selected')
+    expect(reconcileServerExpiredSelectionId('selected', 'replacement', null)).toBeNull()
+    expect(reconcileServerExpiredSelectionId('selected', null, null)).toBeNull()
+    expect(reconcileServerExpiredSelectionId(
+      'selected',
+      'selected',
+      '2030-01-01T10:00:00Z',
+    )).toBeNull()
+  })
+
+  it('announces only a final plan first discovered by an API update', () => {
+    expect(shouldAnnounceNewFinalPlan(null, '2030-01-01T10:00:00Z')).toBe(true)
+    expect(shouldAnnounceNewFinalPlan(null, null)).toBe(false)
+    expect(shouldAnnounceNewFinalPlan(
+      '2030-01-01T10:00:00Z',
+      '2030-01-01T10:00:00Z',
+    )).toBe(false)
+  })
+
+  it('recognizes the stable expired-selection code and tells the author to refresh', () => {
+    const expiredError = parsePlanConfirmationApiError({
+      response: {
+        status: 409,
+        _data: { code: 'selected_option_expired' },
+      },
+    })
+
+    expect(expiredError.code).toBe('selected_option_expired')
+    expect(expiredError.message).toContain('Время выбранного варианта уже прошло')
+    expect(expiredError.message).toContain('Обнови данные')
+    expect(parsePlanConfirmationApiError({ status: 400 }).message).toContain('явным')
+    expect(parsePlanConfirmationApiError({ status: 409 }).message).toContain('Обнови данные')
+    expect(parsePlanConfirmationApiError({ status: 429 }).message).toContain('минуту')
   })
 })

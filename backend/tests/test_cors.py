@@ -53,7 +53,7 @@ def test_trusted_frontend_preflight_allows_public_response_put(settings) -> None
     assert "content-type" in response["Access-Control-Allow-Headers"].lower()
 
 
-@pytest.mark.parametrize("suffix", ["plan-options", "selection"])
+@pytest.mark.parametrize("suffix", ["plan-options", "selection", "confirmation"])
 def test_trusted_frontend_preflight_allows_planning_put(settings, suffix: str) -> None:
     """The frontend can submit author and recipient planning JSON requests."""
     trusted_origin = settings.CORS_ALLOWED_ORIGINS[0]

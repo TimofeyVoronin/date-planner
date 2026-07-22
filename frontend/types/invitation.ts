@@ -36,13 +36,20 @@ export type PlanSelectionPayload = {
   option_id: string
 }
 
+export type PlanConfirmationPayload = {
+  confirmed: true
+  option_id: string
+}
+
 export type InvitationRecord = InvitationCreatePayload & {
   id: string
+  server_now: string
   response_status: InvitationResponseStatus
   responded_at: string | null
   plan_options: InvitationPlanOption[]
   selected_option_id: string | null
   selected_at: string | null
+  confirmed_at: string | null
   created_at: string
   updated_at: string
 }

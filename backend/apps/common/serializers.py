@@ -1,9 +1,11 @@
 """Serializers for common API responses."""
 
 from datetime import datetime
+from uuid import UUID
 
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_naive, now
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.common.models import (
@@ -37,6 +39,10 @@ class InvitationSerializer(serializers.ModelSerializer):
     plan_options = InvitationPlanOptionSerializer(many=True, read_only=True)
     selected_option_id = serializers.UUIDField(read_only=True, allow_null=True)
     selected_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    confirmed_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    server_now = serializers.SerializerMethodField(
+        help_text="Server time captured while serializing this API response."
+    )
 
     class Meta:
         """Configure persisted and read-only invitation fields."""
@@ -52,6 +58,8 @@ class InvitationSerializer(serializers.ModelSerializer):
             "plan_options",
             "selected_option_id",
             "selected_at",
+            "confirmed_at",
+            "server_now",
             "created_at",
             "updated_at",
         )
@@ -62,6 +70,8 @@ class InvitationSerializer(serializers.ModelSerializer):
             "plan_options",
             "selected_option_id",
             "selected_at",
+            "confirmed_at",
+            "server_now",
             "created_at",
             "updated_at",
         )
@@ -74,6 +84,11 @@ class InvitationSerializer(serializers.ModelSerializer):
                 "trim_whitespace": True,
             },
         }
+
+    @extend_schema_field(serializers.DateTimeField())
+    def get_server_now(self, invitation: Invitation) -> datetime:
+        """Return a non-persisted server-clock snapshot for client expiry decisions."""
+        return now()
 
 
 class InvitationResponseUpdateSerializer(serializers.Serializer):
@@ -130,6 +145,44 @@ class InvitationSelectionUpdateSerializer(serializers.Serializer):
     """Validate the recipient's selected option identifier."""
 
     option_id = serializers.UUIDField()
+
+
+@extend_schema_field({"type": "boolean", "enum": [True]})
+class LiteralTrueBooleanField(serializers.BooleanField):
+    """Accept only the literal JSON boolean true and document that restriction."""
+
+    def to_internal_value(self, data: object) -> bool:
+        """Reject BooleanField's usual string and numeric coercions."""
+        if data is not True:
+            raise serializers.ValidationError(
+                "Final confirmation accepts only the boolean value true.",
+                code="not_true",
+            )
+        return True
+
+
+class StrictUUIDField(serializers.UUIDField):
+    """Accept UUIDs only in their JSON string representation."""
+
+    def to_internal_value(self, data: object) -> UUID:
+        """Reject UUIDField's permissive integer coercion."""
+        if not isinstance(data, str):
+            raise serializers.ValidationError(
+                "Enter a valid UUID string.",
+                code="invalid",
+            )
+        return super().to_internal_value(data)
+
+
+class InvitationConfirmationSerializer(serializers.Serializer):
+    """Validate the author's irreversible final confirmation."""
+
+    confirmed = LiteralTrueBooleanField(
+        help_text="Must be the literal JSON boolean true; confirmation cannot be undone."
+    )
+    option_id = StrictUUIDField(
+        help_text="The selected option UUID visible to the author when confirming."
+    )
 
 
 class InvitationCreateResponseSerializer(InvitationSerializer):

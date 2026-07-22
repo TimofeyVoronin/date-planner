@@ -346,6 +346,6 @@ def test_openapi_documents_public_response_contract() -> None:
     assert not {"get", "post", "patch", "delete"}.intersection(path)
     operation = path["put"]
     assert operation.get("security", []) == []
-    assert set(operation["responses"]) >= {"200", "400", "404", "429"}
+    assert set(operation["responses"]) >= {"200", "400", "404", "409", "429"}
     request_reference = operation["requestBody"]["content"]["application/json"]["schema"]["$ref"]
     assert request_reference.endswith("/InvitationResponseUpdate")
