@@ -15,6 +15,7 @@ date-planner/
 ├── backend/                  # Django-проект, приложение common и API-тесты
 ├── frontend/                 # Nuxt-приложение, компоненты, composable-функции и тесты
 ├── .github/workflows/ci.yml  # CI-проверки backend и frontend
+├── docs/quality-baseline.md  # Пороги покрытия и полный quality-процесс
 ├── .env.example              # Безопасный шаблон локальной конфигурации
 ├── docker-compose.yml        # PostgreSQL, backend и frontend
 ├── Makefile                  # Частые команды разработки
@@ -183,7 +184,12 @@ Frontend создаёт две ссылки:
 | `make test` | Запустить тесты backend и frontend |
 | `make test-backend` | Запустить только pytest |
 | `make test-frontend` | Запустить только Vitest |
-| `make lint` | Запустить Ruff, ESLint и проверку TypeScript |
+| `make coverage` | Запустить backend и frontend тесты с порогами покрытия |
+| `make coverage-backend` | Сформировать XML/HTML coverage для Django-кода |
+| `make coverage-frontend` | Сформировать HTML/LCOV coverage для TypeScript utilities |
+| `make lint` | Запустить Ruff, проверку Python-форматирования, ESLint и TypeScript |
+| `make check` | Проверить Django, миграции, OpenAPI-схему и production-сборку Nuxt |
+| `make quality` | Выполнить полный локальный набор lint, coverage и check |
 | `make format` | Отформатировать Python и применить безопасные исправления линтеров |
 | `make typecheck` | Запустить TypeScript-проверку Nuxt |
 
@@ -191,25 +197,32 @@ Frontend создаёт две ссылки:
 
 ## Тесты и проверки качества
 
-Полный набор проверок запускается так:
+Быстрые тесты и линтеры запускаются отдельно:
 
 ```bash
 make test
 make lint
 ```
 
+Полная проверка перед завершением задачи:
+
+```bash
+make quality
+```
+
+Она включает тесты с порогами покрытия, Django system checks, проверку отсутствующих миграций, валидацию OpenAPI-схемы, TypeScript и production-сборку Nuxt. После изменения зависимостей сначала выполните `make build`.
+
 Отдельные проверки можно запустить явно:
 
 ```bash
-docker compose run --rm backend pytest
-docker compose run --rm backend ruff check .
-docker compose run --rm frontend npm run test
-docker compose run --rm frontend npm run lint
-docker compose run --rm frontend npm run typecheck
-docker compose run --rm frontend npm run build
+make coverage-backend
+make coverage-frontend
+make check
 ```
 
-GitHub Actions выполняет те же категории проверок backend и frontend при каждом push и pull request.
+Backend должен сохранять не менее `85%` общего branch coverage для `apps.common`. Frontend на текущем этапе измеряет полностью перечисленные `utils/**/*.ts`: `85%` statements/lines, `80%` functions и `75%` branches. Детальная область измерения, артефакты и правила расширения покрытия описаны в [`docs/quality-baseline.md`](docs/quality-baseline.md).
+
+GitHub Actions выполняет те же категории проверок при каждом push и pull request и сохраняет отдельные отчёты `backend-coverage` и `frontend-coverage`.
 
 ## Переменные окружения
 
