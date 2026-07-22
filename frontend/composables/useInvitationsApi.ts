@@ -2,6 +2,9 @@ import type {
   InvitationCreatePayload,
   InvitationCreateResponse,
   InvitationRecord,
+  InvitationResponsePayload,
+  PlanOptionsPayload,
+  PlanSelectionPayload,
 } from '../types/invitation'
 
 export function useInvitationsApi() {
@@ -34,9 +37,58 @@ export function useInvitationsApi() {
     )
   }
 
+  function saveInvitationResponse(
+    id: string,
+    payload: InvitationResponsePayload,
+  ): Promise<InvitationRecord> {
+    return $fetch<InvitationRecord>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/response/`,
+      {
+        baseURL,
+        method: 'PUT',
+        body: payload,
+      },
+    )
+  }
+
+  function savePlanOptions(
+    id: string,
+    token: string,
+    payload: PlanOptionsPayload,
+  ): Promise<InvitationRecord> {
+    return $fetch<InvitationRecord>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/plan-options/`,
+      {
+        baseURL,
+        method: 'PUT',
+        body: payload,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+  }
+
+  function savePlanSelection(
+    id: string,
+    payload: PlanSelectionPayload,
+  ): Promise<InvitationRecord> {
+    return $fetch<InvitationRecord>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/selection/`,
+      {
+        baseURL,
+        method: 'PUT',
+        body: payload,
+      },
+    )
+  }
+
   return {
     createInvitation,
     getManagedInvitation,
     getPublicInvitation,
+    savePlanOptions,
+    savePlanSelection,
+    saveInvitationResponse,
   }
 }

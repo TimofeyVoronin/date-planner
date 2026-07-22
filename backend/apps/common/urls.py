@@ -2,10 +2,12 @@
 
 from django.urls import path
 
+from apps.common.planning_views import InvitationPlanOptionsView, InvitationSelectionView
 from apps.common.views import (
     InvitationCreateView,
     InvitationDetailView,
     InvitationManagementDetailView,
+    InvitationResponseView,
     health_check,
 )
 
@@ -23,5 +25,20 @@ urlpatterns = [
         "invitations/<uuid:pk>/manage/",
         InvitationManagementDetailView.as_view(),
         name="invitation-management-detail",
+    ),
+    path(
+        "invitations/<uuid:pk>/response/",
+        InvitationResponseView.as_view(),
+        name="invitation-response",
+    ),
+    path(
+        "invitations/<uuid:pk>/plan-options/",
+        InvitationPlanOptionsView.as_view(),
+        name="invitation-plan-options",
+    ),
+    path(
+        "invitations/<uuid:pk>/selection/",
+        InvitationSelectionView.as_view(),
+        name="invitation-selection",
     ),
 ]

@@ -42,6 +42,11 @@ def test_create_invitation_persists_and_returns_public_fields() -> None:
     assert body["message"] == invitation.message == "Давай сходим на свидание?"
     assert body["created_at"]
     assert body["updated_at"]
+    assert body["response_status"] == Invitation.ResponseStatus.PENDING
+    assert body["responded_at"] is None
+    assert body["plan_options"] == []
+    assert body["selected_option_id"] is None
+    assert body["selected_at"] is None
     assert body["management_token"]
     assert "management_token_hash" not in body
 
@@ -56,12 +61,17 @@ def test_read_invitation_by_uuid() -> None:
     assert response.json() == {
         "id": str(invitation.pk),
         **invitation_payload(),
+        "response_status": Invitation.ResponseStatus.PENDING,
+        "responded_at": None,
+        "plan_options": [],
+        "selected_option_id": None,
+        "selected_at": None,
         "created_at": invitation.created_at.isoformat().replace("+00:00", "Z"),
         "updated_at": invitation.updated_at.isoformat().replace("+00:00", "Z"),
     }
 
 
-@pytest.mark.parametrize("field", ["author_name", "recipient_name", "message"])
+@pytest.mark.parametrize("field", ["author_name", "recipient_name"])
 def test_create_invitation_rejects_blank_required_fields(field: str) -> None:
     """Whitespace-only personal fields are rejected with a useful field error."""
     payload = invitation_payload()
@@ -72,6 +82,33 @@ def test_create_invitation_rejects_blank_required_fields(field: str) -> None:
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert field in response.json()
     assert Invitation.objects.count() == 0
+
+
+@pytest.mark.parametrize("payload_message", [None, "", "   "])
+def test_create_invitation_allows_optional_message(payload_message: str | None) -> None:
+    """An omitted or blank personal message is normalized to an empty string."""
+    payload = invitation_payload()
+    if payload_message is None:
+        payload.pop("message")
+    else:
+        payload["message"] = payload_message
+
+    response = APIClient().post("/api/v1/invitations/", payload, format="json")
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.json()["message"] == ""
+    assert Invitation.objects.get(pk=response.json()["id"]).message == ""
+
+
+def test_create_invitation_rejects_null_message() -> None:
+    """Optional means omitted or blank, not a database NULL value."""
+    payload = invitation_payload()
+    payload["message"] = None
+
+    response = APIClient().post("/api/v1/invitations/", payload, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "message" in response.json()
 
 
 @pytest.mark.parametrize(

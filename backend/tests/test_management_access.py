@@ -82,6 +82,8 @@ def test_valid_management_token_returns_invitation_without_reexposing_token() ->
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["id"] == str(invitation.pk)
     assert response.json()["author_name"] == invitation.author_name
+    assert response.json()["response_status"] == Invitation.ResponseStatus.PENDING
+    assert response.json()["responded_at"] is None
     assert "management_token" not in response.json()
     assert "management_token_hash" not in response.json()
     assert response["Cache-Control"] == "private, no-store"

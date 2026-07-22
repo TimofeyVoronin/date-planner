@@ -1,22 +1,34 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { RUNAWAY_ATTEMPT_LIMIT, useRunawayButton } from '../../composables/useRunawayButton'
+import type {
+  FinalInvitationResponseStatus,
+  InvitationResponseStatus,
+} from '../../types/invitation'
+import { invitationStatusToAnswer } from '../../utils/invitations'
 
-type Answer = 'accepted' | 'declined' | null
+type Answer = FinalInvitationResponseStatus | null
 
 type Props = {
+  allowReset?: boolean
   authorName?: string
+  initialStatus?: InvitationResponseStatus
   message?: string
   recipientName?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  allowReset: true,
   authorName: '',
+  initialStatus: 'pending',
   message: '',
   recipientName: '',
 })
+const emit = defineEmits<{
+  answered: [status: FinalInvitationResponseStatus]
+}>()
 
-const answer = ref<Answer>(null)
+const answer = ref<Answer>(invitationStatusToAnswer(props.initialStatus))
 const secondChance = ref(false)
 const resultHeadingRef = ref<HTMLElement | null>(null)
 
@@ -38,14 +50,18 @@ function focusResult(): void {
   void nextTick(() => resultHeadingRef.value?.focus())
 }
 
-function acceptInvitation(): void {
-  answer.value = 'accepted'
+function chooseAnswer(status: FinalInvitationResponseStatus): void {
+  answer.value = status
+  emit('answered', status)
   focusResult()
 }
 
+function acceptInvitation(): void {
+  chooseAnswer('accepted')
+}
+
 function declineInvitation(): void {
-  answer.value = 'declined'
-  focusResult()
+  chooseAnswer('declined')
 }
 
 function handleNoPointerEnter(event: PointerEvent): void {
@@ -100,6 +116,21 @@ function resetDemo(): void {
   resetRunawayButton()
   void nextTick(() => yesButtonRef.value?.focus())
 }
+
+watch(
+  () => props.initialStatus,
+  (status) => {
+    answer.value = invitationStatusToAnswer(status)
+    secondChance.value = false
+
+    if (status === 'pending') {
+      resetRunawayButton()
+    }
+    else {
+      focusResult()
+    }
+  },
+)
 </script>
 
 <template>
@@ -139,8 +170,8 @@ function resetDemo(): void {
         </span>
       </h2>
 
-      <p v-if="props.message" class="invitation-card__personal-message">
-        {{ props.message }}
+      <p v-if="props.message.trim()" class="invitation-card__personal-message">
+        {{ props.message.trim() }}
       </p>
       <p v-if="props.authorName" class="invitation-card__signature">
         — {{ props.authorName }}
@@ -211,6 +242,7 @@ function resetDemo(): void {
           : 'Спланируем в другой раз 😉' }}
       </p>
       <button
+        v-if="props.allowReset"
         class="invitation-card__reset-button"
         type="button"
         :aria-label="props.recipientName

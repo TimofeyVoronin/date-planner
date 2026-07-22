@@ -1,18 +1,25 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import PlanOptionsEditor from '../../../components/planning/PlanOptionsEditor.vue'
 import { copyTextWithFallback } from '../../../composables/useClipboard'
 import { useInvitationsApi } from '../../../composables/useInvitationsApi'
-import type { InvitationRecord } from '../../../types/invitation'
+import { useManagementToken } from '../../../composables/useManagementToken'
+import type { InvitationRecord, PlanOptionsPayload } from '../../../types/invitation'
 import {
   buildPublicInvitationUrl,
+  getInvitationResponsePresentation,
   isInvitationId,
-  isManagementToken,
-  managementTokenSessionKey,
   parseInvitationApiError,
-  readManagementToken,
 } from '../../../utils/invitations'
+import {
+  findSelectedPlanOption,
+  formatPlanOptionDate,
+  parsePlanningApiError,
+} from '../../../utils/planning'
 
 type PageState = 'error' | 'loading' | 'missing-token' | 'ready'
+type StatusRefreshState = 'error' | 'idle' | 'loading' | 'success'
+type PlanSaveState = 'error' | 'idle' | 'saving' | 'success'
 
 const route = useRoute()
 const api = useInvitationsApi()
@@ -22,8 +29,19 @@ const pageState = ref<PageState>('loading')
 const errorMessage = ref('')
 const copyStatus = ref<'idle' | 'copied' | 'failed'>('idle')
 const canRetry = ref(true)
-const managementToken = ref<string | null>(null)
+const statusRefreshState = ref<StatusRefreshState>('idle')
+const statusRefreshError = ref('')
+const planSaveState = ref<PlanSaveState>('idle')
+const planSaveError = ref('')
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
+const { clearManagementToken, takeManagementToken } = useManagementToken(invitationId)
+const responsePresentation = computed(() => getInvitationResponsePresentation(
+  invitation.value?.response_status ?? 'pending',
+))
+const selectedPlanOption = computed(() => findSelectedPlanOption(
+  invitation.value?.plan_options ?? [],
+  invitation.value?.selected_option_id ?? null,
+))
 
 useHead({
   title: 'Управление приглашением — Date Planner',
@@ -32,66 +50,6 @@ useHead({
     { name: 'referrer', content: 'no-referrer' },
   ],
 })
-
-function takeTokenFromBrowser(): string | null {
-  const key = managementTokenSessionKey(invitationId.value)
-  const hasHash = window.location.hash.length > 0
-  const tokenFromHash = readManagementToken(window.location.hash)
-
-  if (hasHash) {
-    window.history.replaceState(
-      window.history.state,
-      '',
-      `${window.location.pathname}${window.location.search}`,
-    )
-
-    if (!tokenFromHash) {
-      managementToken.value = null
-
-      try {
-        window.sessionStorage.removeItem(key)
-      }
-      catch {
-        // Storage can be unavailable in private browsing modes.
-      }
-
-      return null
-    }
-
-    managementToken.value = tokenFromHash
-
-    try {
-      window.sessionStorage.setItem(key, tokenFromHash)
-    }
-    catch {
-      // The in-memory token still works when session storage is disabled.
-    }
-
-    return tokenFromHash
-  }
-
-  if (managementToken.value) {
-    return managementToken.value
-  }
-
-  try {
-    const storedToken = window.sessionStorage.getItem(key)
-
-    if (storedToken && isManagementToken(storedToken)) {
-      managementToken.value = storedToken
-      return storedToken
-    }
-
-    if (storedToken) {
-      window.sessionStorage.removeItem(key)
-    }
-
-    return null
-  }
-  catch {
-    return null
-  }
-}
 
 async function loadManagedInvitation(): Promise<void> {
   pageState.value = 'loading'
@@ -104,7 +62,7 @@ async function loadManagedInvitation(): Promise<void> {
     return
   }
 
-  const token = takeTokenFromBrowser()
+  const token = takeManagementToken()
 
   if (!token) {
     pageState.value = 'missing-token'
@@ -114,25 +72,95 @@ async function loadManagedInvitation(): Promise<void> {
   try {
     invitation.value = await api.getManagedInvitation(invitationId.value, token)
     publicUrl.value = buildPublicInvitationUrl(window.location.origin, invitationId.value)
+    planSaveState.value = 'idle'
     pageState.value = 'ready'
   }
   catch (error: unknown) {
     const parsedError = parseInvitationApiError(error)
 
     if (parsedError.status === 401 || parsedError.status === 403) {
-      managementToken.value = null
+      clearManagementToken()
       canRetry.value = false
-
-      try {
-        window.sessionStorage.removeItem(managementTokenSessionKey(invitationId.value))
-      }
-      catch {
-        // Storage can be unavailable in private browsing modes.
-      }
     }
 
     errorMessage.value = parsedError.message
     pageState.value = 'error'
+  }
+}
+
+async function refreshResponseStatus(): Promise<void> {
+  if (statusRefreshState.value === 'loading') {
+    return
+  }
+
+  const token = takeManagementToken()
+
+  if (!token) {
+    pageState.value = 'missing-token'
+    return
+  }
+
+  statusRefreshState.value = 'loading'
+  statusRefreshError.value = ''
+
+  try {
+    invitation.value = await api.getManagedInvitation(invitationId.value, token)
+    statusRefreshState.value = 'success'
+    planSaveState.value = 'idle'
+  }
+  catch (error: unknown) {
+    const parsedError = parseInvitationApiError(error)
+
+    if (parsedError.status === 401 || parsedError.status === 403) {
+      clearManagementToken()
+      canRetry.value = false
+      errorMessage.value = parsedError.message
+      pageState.value = 'error'
+      return
+    }
+
+    statusRefreshError.value = parsedError.message
+    statusRefreshState.value = 'error'
+  }
+}
+
+function markPlanDirty(): void {
+  planSaveState.value = 'idle'
+  planSaveError.value = ''
+}
+
+async function savePlanningOptions(payload: PlanOptionsPayload): Promise<void> {
+  if (planSaveState.value === 'saving') {
+    return
+  }
+
+  const token = takeManagementToken()
+
+  if (!token) {
+    pageState.value = 'missing-token'
+    return
+  }
+
+  planSaveState.value = 'saving'
+  planSaveError.value = ''
+
+  try {
+    invitation.value = await api.savePlanOptions(invitationId.value, token, payload)
+    planSaveState.value = 'success'
+  }
+  catch (error: unknown) {
+    const parsedError = parsePlanningApiError(error, 'options')
+
+    if (parsedError.status === 401 || parsedError.status === 403) {
+      clearManagementToken()
+      canRetry.value = false
+      errorMessage.value = parsedError.message
+      pageState.value = 'error'
+      return
+    }
+
+    planSaveError.value = parsedError.message
+    planSaveState.value = 'error'
   }
 }
 
@@ -203,6 +231,86 @@ onMounted(loadManagedInvitation)
         </header>
 
         <article class="manage-card">
+          <section
+            class="response-overview"
+            :class="`response-overview--${responsePresentation.tone}`"
+            aria-labelledby="response-overview-title"
+          >
+            <span class="response-overview__icon" aria-hidden="true">
+              {{ responsePresentation.icon }}
+            </span>
+            <div class="response-overview__copy">
+              <p>Текущий ответ</p>
+              <h2 id="response-overview-title">{{ responsePresentation.label }}</h2>
+              <span>{{ responsePresentation.description }}</span>
+              <time
+                v-if="invitation.responded_at"
+                :datetime="invitation.responded_at"
+              >
+                Получен: {{ formatDate(invitation.responded_at) }}
+              </time>
+              <span v-else>Время ответа появится после выбора получателя.</span>
+            </div>
+            <button
+              type="button"
+              :disabled="statusRefreshState === 'loading'"
+              aria-label="Загрузить актуальный ответ получателя"
+              @click="refreshResponseStatus"
+            >
+              {{ statusRefreshState === 'loading' ? 'Обновляем…' : 'Обновить статус' }}
+            </button>
+            <p
+              v-if="statusRefreshState === 'success'"
+              class="response-overview__refresh-message response-overview__refresh-message--success"
+              role="status"
+            >
+              Статус обновлён.
+            </p>
+            <p
+              v-else-if="statusRefreshState === 'error'"
+              class="response-overview__refresh-message response-overview__refresh-message--error"
+              role="alert"
+            >
+              {{ statusRefreshError }}
+            </p>
+          </section>
+
+          <section
+            v-if="invitation.response_status === 'accepted' && invitation.selected_option_id"
+            class="plan-locked"
+            aria-labelledby="selected-plan-title"
+          >
+            <span class="plan-locked__icon" aria-hidden="true">💞</span>
+            <div>
+              <p>Выбранный вариант</p>
+              <h2 id="selected-plan-title">План свидания согласован</h2>
+              <template v-if="selectedPlanOption">
+                <time :datetime="selectedPlanOption.starts_at">
+                  {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}
+                </time>
+                <strong>{{ selectedPlanOption.place }}</strong>
+                <span v-if="selectedPlanOption.comment">{{ selectedPlanOption.comment }}</span>
+              </template>
+              <span v-else>Обнови страницу, чтобы загрузить выбранный вариант.</span>
+              <small v-if="invitation.selected_at">
+                Выбрано: {{ formatDate(invitation.selected_at) }}
+              </small>
+            </div>
+            <p class="plan-locked__notice">
+              <span aria-hidden="true">🔒</span>
+              После выбора получателя набор вариантов заблокирован от изменений.
+            </p>
+          </section>
+
+          <PlanOptionsEditor
+            v-else-if="invitation.response_status === 'accepted'"
+            :options="invitation.plan_options"
+            :save-error="planSaveError"
+            :save-state="planSaveState"
+            @dirty="markPlanDirty"
+            @save="savePlanningOptions"
+          />
+
           <dl class="manage-card__details">
             <div>
               <dt>От кого</dt>
@@ -212,7 +320,7 @@ onMounted(loadManagedInvitation)
               <dt>Для кого</dt>
               <dd>{{ invitation.recipient_name }}</dd>
             </div>
-            <div class="manage-card__message">
+            <div v-if="invitation.message.trim()" class="manage-card__message">
               <dt>Сообщение</dt>
               <dd>{{ invitation.message }}</dd>
             </div>

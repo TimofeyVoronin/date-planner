@@ -3,6 +3,8 @@ import {
   INVITATION_NAME_MAX_LENGTH,
   type InvitationCreatePayload,
   type InvitationField,
+  type FinalInvitationResponseStatus,
+  type InvitationResponseStatus,
   type InvitationValidationErrors,
 } from '../types/invitation'
 
@@ -10,6 +12,13 @@ export type InvitationApiError = {
   fieldErrors: InvitationValidationErrors
   message: string
   status: number | null
+}
+
+export type InvitationResponsePresentation = {
+  description: string
+  icon: string
+  label: string
+  tone: 'accepted' | 'declined' | 'pending'
 }
 
 type UnknownRecord = Record<string, unknown>
@@ -100,10 +109,7 @@ export function validateInvitationPayload(
     errors.recipient_name = `Не больше ${INVITATION_NAME_MAX_LENGTH} символов.`
   }
 
-  if (!normalized.message) {
-    errors.message = 'Добавь несколько тёплых слов.'
-  }
-  else if (normalized.message.length > INVITATION_MESSAGE_MAX_LENGTH) {
+  if (normalized.message.length > INVITATION_MESSAGE_MAX_LENGTH) {
     errors.message = `Не больше ${INVITATION_MESSAGE_MAX_LENGTH} символов.`
   }
 
@@ -145,6 +151,71 @@ export function managementTokenSessionKey(id: string): string {
 
 export function isInvitationId(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
+export function isInvitationResponseStatus(value: unknown): value is InvitationResponseStatus {
+  return value === 'pending' || value === 'accepted' || value === 'declined'
+}
+
+export function isFinalInvitationResponseStatus(
+  value: InvitationResponseStatus,
+): value is Exclude<InvitationResponseStatus, 'pending'> {
+  return value === 'accepted' || value === 'declined'
+}
+
+export function invitationStatusToAnswer(
+  status: InvitationResponseStatus,
+): FinalInvitationResponseStatus | null {
+  return isFinalInvitationResponseStatus(status) ? status : null
+}
+
+export function getInvitationResponsePresentation(
+  status: InvitationResponseStatus,
+): InvitationResponsePresentation {
+  if (status === 'accepted') {
+    return {
+      tone: 'accepted',
+      icon: '💘',
+      label: 'Приглашение принято',
+      description: 'Получатель ответил «Да». Можно переходить к планированию.',
+    }
+  }
+
+  if (status === 'declined') {
+    return {
+      tone: 'declined',
+      icon: '🌷',
+      label: 'Приглашение отклонено',
+      description: 'Получатель ответил «Нет». Ответ сохранён без давления.',
+    }
+  }
+
+  return {
+    tone: 'pending',
+    icon: '⏳',
+    label: 'Ожидаем ответ',
+    description: 'Получатель ещё не выбрал окончательный ответ.',
+  }
+}
+
+export function parseInvitationResponseApiError(error: unknown): InvitationApiError {
+  const parsedError = parseInvitationApiError(error)
+
+  if (parsedError.status === 400) {
+    return {
+      ...parsedError,
+      message: 'Не удалось сохранить этот ответ. Выбери «Да» или «Нет» ещё раз.',
+    }
+  }
+
+  if (parsedError.status === 409) {
+    return {
+      ...parsedError,
+      message: 'Ответ уже изменился. Обнови страницу, чтобы увидеть актуальное состояние.',
+    }
+  }
+
+  return parsedError
 }
 
 export function parseInvitationApiError(error: unknown): InvitationApiError {

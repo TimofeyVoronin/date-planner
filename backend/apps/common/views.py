@@ -1,41 +1,28 @@
 """Common and invitation API views."""
 
+from django.db import transaction
+from django.utils.timezone import now
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 
 from apps.common.authentication import (
     HasInvitationManagementToken,
     ManagementTokenAuthentication,
 )
 from apps.common.capabilities import generate_management_token, hash_management_token
+from apps.common.mixins import NoStoreResponseMixin
 from apps.common.models import Invitation
 from apps.common.serializers import (
     HealthResponseSerializer,
     InvitationCreateResponseSerializer,
+    InvitationResponseUpdateSerializer,
     InvitationSerializer,
 )
-
-
-class NoStoreResponseMixin:
-    """Prevent browsers and intermediaries from storing capability responses."""
-
-    def finalize_response(
-        self,
-        request: Request,
-        response: Response,
-        *args: object,
-        **kwargs: object,
-    ) -> Response:
-        """Attach cache directives to success and error responses alike."""
-        finalized_response = super().finalize_response(request, response, *args, **kwargs)
-        finalized_response["Cache-Control"] = "private, no-store"
-        finalized_response["Pragma"] = "no-cache"
-        return finalized_response
 
 
 @extend_schema(
@@ -156,3 +143,67 @@ class InvitationManagementDetailView(NoStoreResponseMixin, generics.RetrieveAPIV
     def get(self, request: Request, *args: object, **kwargs: object) -> Response:
         """Return one invitation when its management capability is valid."""
         return super().get(request, *args, **kwargs)
+
+
+class InvitationResponseView(NoStoreResponseMixin, generics.GenericAPIView):
+    """Store the recipient's current response through the public invitation UUID."""
+
+    queryset = Invitation.objects.select_for_update()
+    serializer_class = InvitationResponseUpdateSerializer
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle, ScopedRateThrottle]
+    throttle_scope = "invitation_response"
+    http_method_names = ["put", "options"]
+
+    @extend_schema(
+        tags=["invitations"],
+        summary="Set the invitation response",
+        request=InvitationResponseUpdateSerializer,
+        responses={
+            status.HTTP_200_OK: InvitationSerializer,
+            status.HTTP_400_BAD_REQUEST: OpenApiResponse(
+                description="The response status must be accepted or declined."
+            ),
+            status.HTTP_404_NOT_FOUND: OpenApiResponse(description="Invitation not found."),
+            status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
+                description="The invitation response rate limit was exceeded."
+            ),
+        },
+        auth=[],
+    )
+    def put(self, request: Request, *args: object, **kwargs: object) -> Response:
+        """Set or replace the invitation response, preserving idempotent repeats."""
+        input_serializer = self.get_serializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        response_status = input_serializer.validated_data["response_status"]
+
+        with transaction.atomic():
+            invitation = self.get_object()
+            clear_selection = (
+                response_status == Invitation.ResponseStatus.DECLINED
+                and invitation.plan_options.filter(selected_at__isnull=False).exists()
+            )
+            if (
+                invitation.response_status != response_status
+                or invitation.responded_at is None
+                or clear_selection
+            ):
+                invitation.response_status = response_status
+                invitation.responded_at = now()
+                update_fields = ["response_status", "responded_at", "updated_at"]
+                if clear_selection:
+                    invitation.plan_options.filter(selected_at__isnull=False).update(
+                        selected_at=None
+                    )
+                invitation.save(update_fields=update_fields)
+
+            output_data = InvitationSerializer(
+                invitation,
+                context=self.get_serializer_context(),
+            ).data
+
+        return Response(
+            output_data,
+            status=status.HTTP_200_OK,
+        )

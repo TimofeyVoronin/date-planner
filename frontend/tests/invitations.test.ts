@@ -4,11 +4,16 @@ import {
   buildManagementInvitationUrl,
   buildPublicInvitationUrl,
   hasInvitationValidationErrors,
+  getInvitationResponsePresentation,
   isInvitationId,
+  isFinalInvitationResponseStatus,
+  isInvitationResponseStatus,
   isManagementToken,
+  invitationStatusToAnswer,
   managementTokenSessionKey,
   normalizeInvitationPayload,
   parseInvitationApiError,
+  parseInvitationResponseApiError,
   readManagementToken,
   validateInvitationPayload,
 } from '../utils/invitations'
@@ -42,7 +47,7 @@ describe('invitation form helpers', () => {
     expect(hasInvitationValidationErrors(errors)).toBe(false)
   })
 
-  it('reports each blank required field', () => {
+  it('requires both names but accepts a blank personal message', () => {
     const errors = validateInvitationPayload({
       author_name: ' ',
       recipient_name: '\n',
@@ -51,7 +56,7 @@ describe('invitation form helpers', () => {
 
     expect(errors.author_name).toBeTruthy()
     expect(errors.recipient_name).toBeTruthy()
-    expect(errors.message).toBeTruthy()
+    expect(errors.message).toBeUndefined()
     expect(hasInvitationValidationErrors(errors)).toBe(true)
   })
 
@@ -141,5 +146,36 @@ describe('API error presentation', () => {
     expect(parseInvitationApiError({ response: { status: 403 } }).message).toContain(
       'Секретная ссылка',
     )
+  })
+})
+
+describe('invitation response state', () => {
+  it('recognizes only supported persisted statuses', () => {
+    expect(isInvitationResponseStatus('pending')).toBe(true)
+    expect(isInvitationResponseStatus('accepted')).toBe(true)
+    expect(isInvitationResponseStatus('declined')).toBe(true)
+    expect(isInvitationResponseStatus('yes')).toBe(false)
+    expect(isInvitationResponseStatus(null)).toBe(false)
+  })
+
+  it('maps only final statuses to a card answer', () => {
+    expect(invitationStatusToAnswer('pending')).toBeNull()
+    expect(invitationStatusToAnswer('accepted')).toBe('accepted')
+    expect(invitationStatusToAnswer('declined')).toBe('declined')
+    expect(isFinalInvitationResponseStatus('pending')).toBe(false)
+  })
+
+  it.each([
+    ['pending', 'Ожидаем ответ', 'pending'],
+    ['accepted', 'Приглашение принято', 'accepted'],
+    ['declined', 'Приглашение отклонено', 'declined'],
+  ] as const)('presents %s status in Russian', (status, label, tone) => {
+    expect(getInvitationResponsePresentation(status)).toMatchObject({ label, tone })
+  })
+
+  it('provides actionable save errors', () => {
+    expect(parseInvitationResponseApiError({ status: 400 }).message).toContain('«Да» или «Нет»')
+    expect(parseInvitationResponseApiError({ status: 409 }).message).toContain('Обнови страницу')
+    expect(parseInvitationResponseApiError({ status: 429 }).message).toContain('минуту')
   })
 })

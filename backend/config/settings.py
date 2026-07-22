@@ -133,6 +133,8 @@ REST_FRAMEWORK = {
         "anon": os.getenv("DRF_THROTTLE_ANON_RATE", "60/min"),
         "user": os.getenv("DRF_THROTTLE_USER_RATE", "120/min"),
         "invitation_create": os.getenv("DRF_THROTTLE_CREATE_RATE", "10/min"),
+        "invitation_response": os.getenv("DRF_THROTTLE_RESPONSE_RATE", "20/min"),
+        "invitation_plan": os.getenv("DRF_THROTTLE_PLAN_RATE", "20/min"),
     },
     # There is no reverse proxy in the current Compose stack, so client identity
     # must come from REMOTE_ADDR rather than a spoofable X-Forwarded-For header.
@@ -144,6 +146,10 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "API for creating invitations and planning dates together.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    "ENUM_NAME_OVERRIDES": {
+        "InvitationResponseStatusEnum": "apps.common.models.INVITATION_RESPONSE_STATUS_CHOICES",
+        "InvitationAnswerStatusEnum": "apps.common.models.INVITATION_ANSWER_STATUS_CHOICES",
+    },
 }
 
 LOG_LEVEL = os.getenv("DJANGO_LOG_LEVEL", "INFO").upper()

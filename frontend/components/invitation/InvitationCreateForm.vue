@@ -112,7 +112,7 @@ async function copyLink(target: CopyTarget): Promise<void> {
     <div class="create-card__heading">
       <p class="create-card__step">Шаг 1</p>
       <h2 id="create-invitation-title">Кого пригласим?</h2>
-      <p>Заполни три поля — мы подготовим две ссылки.</p>
+      <p>Заполни два имени и при желании добавь личное сообщение.</p>
     </div>
 
     <form class="invitation-form" novalidate @submit.prevent="submitInvitation">
@@ -170,7 +170,7 @@ async function copyLink(target: CopyTarget): Promise<void> {
 
       <div class="form-field">
         <div class="form-field__label-row">
-          <label for="invitation-message">Личное сообщение</label>
+          <label for="invitation-message">Личное сообщение <span>(необязательно)</span></label>
           <span aria-hidden="true">{{ form.message.length }}/{{ INVITATION_MESSAGE_MAX_LENGTH }}</span>
         </div>
         <textarea
@@ -178,12 +178,17 @@ async function copyLink(target: CopyTarget): Promise<void> {
           v-model="form.message"
           name="message"
           rows="4"
-          required
           :maxlength="INVITATION_MESSAGE_MAX_LENGTH"
           placeholder="Напиши несколько слов, которые поймёте только вы..."
           :aria-invalid="Boolean(validationErrors.message)"
-          :aria-describedby="validationErrors.message ? 'invitation-message-error' : undefined"
+          :aria-describedby="fieldDescription(
+            'invitation-message-hint',
+            validationErrors.message && 'invitation-message-error',
+          )"
         />
+        <span id="invitation-message-hint" class="form-field__hint">
+          Можно оставить пустым — приглашение всё равно будет персональным.
+        </span>
         <span
           v-if="validationErrors.message"
           id="invitation-message-error"
