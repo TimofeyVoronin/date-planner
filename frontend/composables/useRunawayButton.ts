@@ -4,6 +4,7 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  watch,
   type CSSProperties,
 } from 'vue'
 
@@ -15,6 +16,9 @@ const NO_BUTTON_SCALE_STEP = 0.08
 const YES_BUTTON_SCALE_STEP = 0.12
 const EDGE_PADDING = 10
 const BUTTON_CLEARANCE = 12
+const BUTTON_GAP = 12
+const INITIAL_BUTTON_TOP = 32
+const DEFAULT_BUTTON_WIDTH = 118
 
 export type ButtonScales = {
   no: number
@@ -47,6 +51,10 @@ export function normalizeAttemptCount(attempts: number): number {
 
 export function getNextAttemptCount(attempts: number): number {
   return Math.min(RUNAWAY_ATTEMPT_LIMIT, normalizeAttemptCount(attempts) + 1)
+}
+
+export function hasReachedRunawayLimit(attempts: number): boolean {
+  return normalizeAttemptCount(attempts) >= RUNAWAY_ATTEMPT_LIMIT
 }
 
 export function calculateButtonScales(attempts: number): ButtonScales {
@@ -92,9 +100,13 @@ export function useRunawayButton(random: () => number = Math.random) {
   let resizeObserver: ResizeObserver | null = null
 
   const scales = computed(() => calculateButtonScales(attempts.value))
+  const pairOffset = computed(
+    () => ((noButtonRef.value?.offsetWidth ?? DEFAULT_BUTTON_WIDTH) + BUTTON_GAP) / 2,
+  )
   const canRunAway = computed(
     () => attempts.value < RUNAWAY_ATTEMPT_LIMIT && !prefersReducedMotion.value,
   )
+  const runawayLimitReached = computed(() => hasReachedRunawayLimit(attempts.value))
 
   const noButtonStyle = computed<CSSProperties>(() => ({
     transform: `translate3d(${position.value.x}px, ${position.value.y}px, 0) scale(${scales.value.no})`,
@@ -102,7 +114,9 @@ export function useRunawayButton(random: () => number = Math.random) {
   }))
 
   const yesButtonStyle = computed<CSSProperties>(() => ({
+    '--yes-button-pair-offset': `${pairOffset.value}px`,
     '--yes-button-scale': String(scales.value.yes),
+    '--yes-button-shift': `${pairOffset.value * attempts.value / RUNAWAY_ATTEMPT_LIMIT}px`,
   }))
 
   function setInitialPosition(): void {
@@ -121,23 +135,54 @@ export function useRunawayButton(random: () => number = Math.random) {
     const minY = EDGE_PADDING - verticalInset
     const maxY = container.clientHeight - EDGE_PADDING - noButton.offsetHeight + verticalInset
 
+    const desiredPosition = attempts.value === 0
+      ? {
+          x: container.clientWidth / 2 + BUTTON_GAP / 2,
+          y: INITIAL_BUTTON_TOP,
+        }
+      : position.value
+
     position.value = {
-      x: Math.max(minX, Math.min(maxX, (container.clientWidth - noButton.offsetWidth) / 2)),
-      y: Math.max(minY, maxY),
+      x: Math.max(minX, Math.min(maxX, desiredPosition.x)),
+      y: Math.max(minY, Math.min(maxY, desiredPosition.y)),
     }
     positionReady.value = true
+
+    if (attempts.value === 0) {
+      return
+    }
+
+    const yesRectangle = getYesRectangle(scales.value.yes, attempts.value)
+    const noRectangle = visualRectangle(
+      position.value,
+      noButton.offsetWidth,
+      noButton.offsetHeight,
+      scale,
+    )
+
+    if (yesRectangle && rectanglesOverlap(noRectangle, yesRectangle, BUTTON_CLEARANCE)) {
+      const safePosition = findNextPosition(scales.value.no, scales.value.yes, attempts.value)
+
+      if (safePosition) {
+        position.value = safePosition
+      }
+    }
   }
 
-  function getYesRectangle(nextScale: number, containerBounds: DOMRect): Rectangle | null {
+  function getYesRectangle(
+    nextScale: number,
+    nextAttempt: number,
+  ): Rectangle | null {
+    const container = containerRef.value
     const yesButton = yesButtonRef.value
 
-    if (!yesButton) {
+    if (!container || !yesButton) {
       return null
     }
 
-    const currentBounds = yesButton.getBoundingClientRect()
-    const centerX = currentBounds.left - containerBounds.left + currentBounds.width / 2
-    const centerY = currentBounds.top - containerBounds.top + currentBounds.height / 2
+    const nextProgress = normalizeAttemptCount(nextAttempt) / RUNAWAY_ATTEMPT_LIMIT
+    const centerX = container.clientWidth / 2 - pairOffset.value + pairOffset.value * nextProgress
+    const centerY = INITIAL_BUTTON_TOP + yesButton.offsetHeight / 2
     const width = yesButton.offsetWidth * nextScale
     const height = yesButton.offsetHeight * nextScale
 
@@ -149,7 +194,11 @@ export function useRunawayButton(random: () => number = Math.random) {
     }
   }
 
-  function findNextPosition(nextScale: number, nextYesScale: number): Point | null {
+  function findNextPosition(
+    nextScale: number,
+    nextYesScale: number,
+    nextAttempt: number,
+  ): Point | null {
     const container = containerRef.value
     const noButton = noButtonRef.value
 
@@ -170,8 +219,7 @@ export function useRunawayButton(random: () => number = Math.random) {
       return null
     }
 
-    const containerBounds = container.getBoundingClientRect()
-    const yesRectangle = getYesRectangle(nextYesScale, containerBounds)
+    const yesRectangle = getYesRectangle(nextYesScale, nextAttempt)
     const minimumDistance = Math.min(
       56,
       Math.max(28, Math.min(container.clientWidth, container.clientHeight) * 0.14),
@@ -194,6 +242,15 @@ export function useRunawayButton(random: () => number = Math.random) {
       { x: maxX, y: maxY },
       { x: (minX + maxX) / 2, y: maxY },
     )
+
+    for (let row = 0; row <= 4; row += 1) {
+      for (let column = 0; column <= 4; column += 1) {
+        candidates.push({
+          x: minX + column / 4 * (maxX - minX),
+          y: minY + row / 4 * (maxY - minY),
+        })
+      }
+    }
 
     for (const candidate of candidates) {
       const candidateCenter = { x: candidate.x + width / 2, y: candidate.y + height / 2 }
@@ -231,7 +288,7 @@ export function useRunawayButton(random: () => number = Math.random) {
 
     const nextAttempt = getNextAttemptCount(attempts.value)
     const nextScales = calculateButtonScales(nextAttempt)
-    const nextPosition = findNextPosition(nextScales.no, nextScales.yes)
+    const nextPosition = findNextPosition(nextScales.no, nextScales.yes, nextAttempt)
 
     if (!nextPosition) {
       return false
@@ -253,18 +310,32 @@ export function useRunawayButton(random: () => number = Math.random) {
     prefersReducedMotion.value = event.matches
   }
 
+  function observeCurrentContainer(): void {
+    resizeObserver?.disconnect()
+
+    if (resizeObserver && containerRef.value) {
+      resizeObserver.observe(containerRef.value)
+    }
+  }
+
+  watch(containerRef, (container) => {
+    observeCurrentContainer()
+
+    if (container) {
+      setInitialPosition()
+    }
+  })
+
   onMounted(() => {
     motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
     prefersReducedMotion.value = motionQuery.matches
     motionQuery.addEventListener('change', handleMotionPreference)
 
+    resizeObserver = new ResizeObserver(setInitialPosition)
+
     void nextTick(() => {
       setInitialPosition()
-
-      if (containerRef.value) {
-        resizeObserver = new ResizeObserver(setInitialPosition)
-        resizeObserver.observe(containerRef.value)
-      }
+      observeCurrentContainer()
     })
   })
 
@@ -284,6 +355,7 @@ export function useRunawayButton(random: () => number = Math.random) {
     positionReady,
     prefersReducedMotion,
     resetRunawayButton,
+    runawayLimitReached,
     runAway,
     yesButtonRef,
     yesButtonStyle,

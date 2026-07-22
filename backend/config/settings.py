@@ -112,8 +112,30 @@ CORS_ALLOWED_ORIGINS = env_list(
     "http://localhost:3000,http://127.0.0.1:3000",
 )
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+        "LOCATION": os.getenv(
+            "DRF_THROTTLE_CACHE_LOCATION",
+            "/tmp/date-planner-throttle-cache",
+        ),
+        "OPTIONS": {"MAX_ENTRIES": 10_000},
+    }
+}
+
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": os.getenv("DRF_THROTTLE_ANON_RATE", "60/min"),
+        "user": os.getenv("DRF_THROTTLE_USER_RATE", "120/min"),
+    },
+    # There is no reverse proxy in the current Compose stack, so client identity
+    # must come from REMOTE_ADDR rather than a spoofable X-Forwarded-For header.
+    "NUM_PROXIES": int(os.getenv("DRF_NUM_PROXIES", "0")),
 }
 
 SPECTACULAR_SETTINGS = {

@@ -5,6 +5,7 @@ import {
   RUNAWAY_ATTEMPT_LIMIT,
   calculateButtonScales,
   getNextAttemptCount,
+  hasReachedRunawayLimit,
   normalizeAttemptCount,
 } from '../composables/useRunawayButton'
 
@@ -46,5 +47,11 @@ describe('attempt counter', () => {
     expect(normalizeAttemptCount(-2)).toBe(0)
     expect(normalizeAttemptCount(2.9)).toBe(2)
     expect(normalizeAttemptCount(8)).toBe(RUNAWAY_ATTEMPT_LIMIT)
+  })
+
+  it('reports the fifth successful attempt as the runaway limit', () => {
+    expect(hasReachedRunawayLimit(4)).toBe(false)
+    expect(hasReachedRunawayLimit(5)).toBe(true)
+    expect(hasReachedRunawayLimit(100)).toBe(true)
   })
 })

@@ -5,6 +5,7 @@ import { RUNAWAY_ATTEMPT_LIMIT, useRunawayButton } from '../../composables/useRu
 type Answer = 'accepted' | 'declined' | null
 
 const answer = ref<Answer>(null)
+const secondChance = ref(false)
 const resultHeadingRef = ref<HTMLElement | null>(null)
 
 const {
@@ -15,6 +16,7 @@ const {
   noButtonStyle,
   prefersReducedMotion,
   resetRunawayButton,
+  runawayLimitReached,
   runAway,
   yesButtonRef,
   yesButtonStyle,
@@ -35,27 +37,54 @@ function declineInvitation(): void {
 }
 
 function handleNoPointerEnter(event: PointerEvent): void {
-  if (event.pointerType === 'mouse') {
-    runAway()
+  if (event.pointerType === 'mouse' && !secondChance.value) {
+    if (runAway() && runawayLimitReached.value) {
+      secondChance.value = true
+    }
   }
 }
 
-function handleNoClick(event: MouseEvent): void {
-  if (event.detail === 0 || !canRunAway.value) {
-    declineInvitation()
-    return
-  }
-
-  if (runAway()) {
-    event.preventDefault()
+function offerSecondChanceOrDecline(): void {
+  if (!secondChance.value) {
+    secondChance.value = true
     return
   }
 
   declineInvitation()
 }
 
+function handleNoClick(event: MouseEvent): void {
+  if (secondChance.value) {
+    declineInvitation()
+    return
+  }
+
+  if (event.detail === 0 || prefersReducedMotion.value) {
+    declineInvitation()
+    return
+  }
+
+  if (!canRunAway.value) {
+    offerSecondChanceOrDecline()
+    return
+  }
+
+  if (runAway()) {
+    event.preventDefault()
+
+    if (runawayLimitReached.value) {
+      secondChance.value = true
+    }
+
+    return
+  }
+
+  offerSecondChanceOrDecline()
+}
+
 function resetDemo(): void {
   answer.value = null
+  secondChance.value = false
   resetRunawayButton()
   void nextTick(() => yesButtonRef.value?.focus())
 }
@@ -78,9 +107,20 @@ function resetDemo(): void {
     </div>
 
     <div v-if="answer === null" class="invitation-card__body">
-      <p class="invitation-card__note">Для тебя — с теплом</p>
-      <h2 id="invitation-question" class="invitation-card__question">
-        Ты пойдёшь со мной<br>на свидание?
+      <p class="invitation-card__note">Для тебя с любовью</p>
+      <h2
+        id="invitation-question"
+        class="invitation-card__question"
+        :class="{ 'invitation-card__question--second-chance': secondChance }"
+        aria-live="polite"
+      >
+        <span v-if="secondChance">
+          Может всё таки да?
+          <span class="invitation-card__sad-emoji" aria-hidden="true">😢</span>
+        </span>
+        <span v-else>
+          Ты пойдёшь со мной<br>на свидание?
+        </span>
       </h2>
 
       <div
@@ -104,7 +144,9 @@ function resetDemo(): void {
           ref="noButtonRef"
           class="invitation-card__no-button"
           type="button"
-          aria-label="Нет, отклонить приглашение"
+          :aria-label="secondChance
+            ? 'Нет, всё же отклонить приглашение'
+            : 'Нет, отклонить приглашение'"
           aria-describedby="runaway-help"
           :style="noButtonStyle"
           @pointerenter="handleNoPointerEnter"
@@ -115,7 +157,7 @@ function resetDemo(): void {
 
         <p id="runaway-help" class="sr-only">
           Для мыши и сенсорного экрана кнопка может переместиться до пяти раз.
-          С клавиатуры ответ доступен сразу.
+          После пятой попытки появится повторный вопрос. С клавиатуры ответ доступен сразу.
         </p>
         <p class="sr-only" aria-live="polite">
           Попыток перемещения: {{ attempts }} из {{ RUNAWAY_ATTEMPT_LIMIT }}.
@@ -137,13 +179,13 @@ function resetDemo(): void {
           Ура! Теперь давай спланируем идеальное свидание 💘
         </template>
         <template v-else>
-          Ответ принят. Никакого давления 🙂
+          Очень жаль 😢
         </template>
       </h2>
       <p class="invitation-card__result-copy">
         {{ answer === 'accepted'
           ? 'Следующим шагом здесь появится совместное планирование.'
-          : 'Главное — честный и комфортный ответ.' }}
+          : 'Спланируем в другой раз 😉' }}
       </p>
       <button
         class="invitation-card__reset-button"
