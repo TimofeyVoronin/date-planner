@@ -20,6 +20,7 @@ from apps.common.models import Invitation
 from apps.common.serializers import (
     HealthResponseSerializer,
     InvitationCreateResponseSerializer,
+    InvitationManagementUpdateSerializer,
     InvitationResponseUpdateSerializer,
     InvitationSerializer,
 )
@@ -130,14 +131,21 @@ class InvitationDetailView(NoStoreResponseMixin, generics.RetrieveAPIView):
         return super().get(request, *args, **kwargs)
 
 
-class InvitationManagementDetailView(NoStoreResponseMixin, generics.RetrieveAPIView):
-    """Retrieve an invitation through its author-only management capability."""
+class InvitationManagementDetailView(NoStoreResponseMixin, generics.GenericAPIView):
+    """Read or partially edit an invitation through its author capability."""
 
     queryset = Invitation.objects.all()
-    serializer_class = InvitationSerializer
+    serializer_class = InvitationManagementUpdateSerializer
     authentication_classes = [ManagementTokenAuthentication]
     permission_classes = [HasInvitationManagementToken]
-    http_method_names = ["get", "options"]
+    http_method_names = ["get", "patch", "options"]
+
+    def get_queryset(self):
+        """Lock the row only while applying a partial update."""
+        queryset = super().get_queryset()
+        if self.request.method == "PATCH":
+            return queryset.select_for_update()
+        return queryset
 
     @extend_schema(
         tags=["invitations"],
@@ -155,7 +163,51 @@ class InvitationManagementDetailView(NoStoreResponseMixin, generics.RetrieveAPIV
     )
     def get(self, request: Request, *args: object, **kwargs: object) -> Response:
         """Return one invitation when its management capability is valid."""
-        return super().get(request, *args, **kwargs)
+        invitation = self.get_object()
+        output_data = InvitationSerializer(
+            invitation,
+            context=self.get_serializer_context(),
+        ).data
+        return Response(output_data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=["invitations"],
+        summary="Partially update an invitation for management",
+        request=InvitationManagementUpdateSerializer,
+        responses={
+            status.HTTP_200_OK: InvitationSerializer,
+            status.HTTP_400_BAD_REQUEST: OpenApiResponse(
+                description="The editable invitation fields are invalid."
+            ),
+            status.HTTP_401_UNAUTHORIZED: OpenApiResponse(
+                description="The Bearer authorization header is missing or malformed."
+            ),
+            status.HTTP_403_FORBIDDEN: OpenApiResponse(
+                description="The management token does not match this invitation."
+            ),
+            status.HTTP_404_NOT_FOUND: OpenApiResponse(description="Invitation not found."),
+            status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
+                description="The invitation management rate limit was exceeded."
+            ),
+        },
+    )
+    def patch(self, request: Request, *args: object, **kwargs: object) -> Response:
+        """Apply only author-editable fields and keep exact retries idempotent."""
+        with transaction.atomic():
+            invitation = self.get_object()
+            input_serializer = self.get_serializer(
+                invitation,
+                data=request.data,
+                partial=True,
+            )
+            input_serializer.is_valid(raise_exception=True)
+            invitation = input_serializer.save()
+            output_data = InvitationSerializer(
+                invitation,
+                context=self.get_serializer_context(),
+            ).data
+
+        return Response(output_data, status=status.HTTP_200_OK)
 
 
 class InvitationResponseView(NoStoreResponseMixin, generics.GenericAPIView):

@@ -3,6 +3,7 @@ import type {
   InvitationCreateResponse,
   InvitationRecord,
   InvitationResponsePayload,
+  InvitationUpdatePayload,
   PlanConfirmationPayload,
   PlanOptionsPayload,
   PlanSelectionPayload,
@@ -31,6 +32,24 @@ export function useInvitationsApi() {
       `/api/v1/invitations/${encodeURIComponent(id)}/manage/`,
       {
         baseURL,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+  }
+
+  function updateManagedInvitation(
+    id: string,
+    token: string,
+    payload: InvitationUpdatePayload,
+  ): Promise<InvitationRecord> {
+    return $fetch<InvitationRecord>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/manage/`,
+      {
+        baseURL,
+        method: 'PATCH',
+        body: payload,
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -124,5 +143,6 @@ export function useInvitationsApi() {
     savePlanOptions,
     savePlanSelection,
     saveInvitationResponse,
+    updateManagedInvitation,
   }
 }

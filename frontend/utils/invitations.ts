@@ -5,10 +5,13 @@ import {
   INVITATION_PUBLICATION_STATUSES,
   type InvitationCreatePayload,
   type InvitationCreationMode,
+  type InvitationEditSaveState,
   type InvitationField,
   type InvitationPublicationStatus,
   type FinalInvitationResponseStatus,
+  type InvitationRecord,
   type InvitationResponseStatus,
+  type InvitationUpdatePayload,
   type InvitationValidationErrors,
 } from '../types/invitation'
 
@@ -147,6 +150,52 @@ export function validateInvitationPayload(
 
 export function hasInvitationValidationErrors(errors: InvitationValidationErrors): boolean {
   return INVITATION_FIELDS.some(field => Boolean(errors[field]))
+}
+
+export function createInvitationEditForm(invitation: InvitationRecord): InvitationCreatePayload {
+  return {
+    author_name: invitation.author_name,
+    recipient_name: invitation.recipient_name,
+    message: invitation.message,
+    creation_mode: invitation.creation_mode,
+  }
+}
+
+export function buildInvitationUpdatePayload(
+  form: InvitationCreatePayload,
+  invitation: InvitationRecord,
+): InvitationUpdatePayload {
+  const normalized = normalizeInvitationPayload(form)
+  const payload: InvitationUpdatePayload = {}
+
+  if (normalized.author_name !== invitation.author_name) {
+    payload.author_name = normalized.author_name
+  }
+  if (normalized.recipient_name !== invitation.recipient_name) {
+    payload.recipient_name = normalized.recipient_name
+  }
+  if (normalized.message !== invitation.message) {
+    payload.message = normalized.message
+  }
+  if (normalized.creation_mode !== invitation.creation_mode) {
+    payload.creation_mode = normalized.creation_mode
+  }
+
+  return payload
+}
+
+export function invitationEditFormHasChanges(
+  form: InvitationCreatePayload,
+  invitation: InvitationRecord,
+): boolean {
+  return Object.keys(buildInvitationUpdatePayload(form, invitation)).length > 0
+}
+
+export function shouldClearInvitationEditFeedback(
+  saveState: InvitationEditSaveState,
+  isDirty: boolean,
+): boolean {
+  return saveState !== 'saving' && (isDirty || saveState === 'error')
 }
 
 export function buildPublicInvitationUrl(origin: string, id: string): string {

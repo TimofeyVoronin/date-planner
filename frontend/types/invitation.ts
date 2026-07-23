@@ -19,6 +19,10 @@ export type InvitationCreatePayload = {
   creation_mode: InvitationCreationMode
 }
 
+export type InvitationUpdatePayload = Partial<InvitationCreatePayload>
+
+export type InvitationEditSaveState = 'error' | 'idle' | 'saving' | 'success'
+
 export type InvitationPlanOption = {
   id: string
   starts_at: string

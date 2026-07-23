@@ -1,12 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
+import InvitationDetailsEditor from '../../../components/invitation/InvitationDetailsEditor.vue'
 import FinalPlanCard from '../../../components/planning/FinalPlanCard.vue'
 import PlanOptionsEditor from '../../../components/planning/PlanOptionsEditor.vue'
 import { copyTextWithFallback } from '../../../composables/useClipboard'
 import { useInvitationsApi } from '../../../composables/useInvitationsApi'
 import { useManagementToken } from '../../../composables/useManagementToken'
 import { useExpiryClock } from '../../../composables/useExpiryClock'
-import type { InvitationRecord, PlanOptionsPayload } from '../../../types/invitation'
+import type {
+  InvitationEditSaveState,
+  InvitationRecord,
+  InvitationUpdatePayload,
+  InvitationValidationErrors,
+  PlanOptionsPayload,
+} from '../../../types/invitation'
 import {
   buildPublicInvitationUrl,
   getInvitationCreationModePresentation,
@@ -14,6 +22,7 @@ import {
   getInvitationResponsePresentation,
   isInvitationId,
   parseInvitationApiError,
+  shouldClearInvitationEditFeedback,
 } from '../../../utils/invitations'
 import {
   buildPlanConfirmationPayload,
@@ -32,7 +41,6 @@ type StatusRefreshState = 'error' | 'idle' | 'loading' | 'success'
 type PlanSaveState = 'error' | 'idle' | 'saving' | 'success'
 type ConfirmationActionState = 'error' | 'idle' | 'saving'
 type PublicationActionState = 'error' | 'idle' | 'publishing'
-
 const route = useRoute()
 const api = useInvitationsApi()
 const invitation = ref<InvitationRecord | null>(null)
@@ -52,6 +60,10 @@ const confirmationJustCompleted = ref(false)
 const publicationActionState = ref<PublicationActionState>('idle')
 const publicationError = ref('')
 const publicationJustCompleted = ref(false)
+const invitationEditState = ref<InvitationEditSaveState>('idle')
+const invitationEditError = ref('')
+const invitationEditFieldErrors = ref<InvitationValidationErrors>({})
+const hasUnsavedInvitationChanges = ref(false)
 const serverExpiredSelectionId = ref<string | null>(null)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const { clearManagementToken, takeManagementToken } = useManagementToken(invitationId)
@@ -126,6 +138,10 @@ async function loadManagedInvitation(): Promise<void> {
     publicationActionState.value = 'idle'
     publicationError.value = ''
     publicationJustCompleted.value = false
+    invitationEditState.value = 'idle'
+    invitationEditError.value = ''
+    invitationEditFieldErrors.value = {}
+    hasUnsavedInvitationChanges.value = false
     pageState.value = 'ready'
   }
   catch (error: unknown) {
@@ -180,6 +196,59 @@ async function publishDraft(): Promise<void> {
 
     publicationError.value = parsedError.message
     publicationActionState.value = 'error'
+  }
+}
+
+function markInvitationDetailsDirty(isDirty: boolean): void {
+  hasUnsavedInvitationChanges.value = isDirty
+  if (shouldClearInvitationEditFeedback(invitationEditState.value, isDirty)) {
+    invitationEditState.value = 'idle'
+    invitationEditError.value = ''
+    invitationEditFieldErrors.value = {}
+  }
+}
+
+async function saveInvitationDetails(payload: InvitationUpdatePayload): Promise<void> {
+  if (invitationEditState.value === 'saving') {
+    return
+  }
+
+  const token = takeManagementToken()
+
+  if (!token) {
+    pageState.value = 'missing-token'
+    return
+  }
+
+  invitationEditState.value = 'saving'
+  invitationEditError.value = ''
+  invitationEditFieldErrors.value = {}
+
+  try {
+    const nextInvitation = await api.updateManagedInvitation(
+      invitationId.value,
+      token,
+      payload,
+    )
+
+    applyManagedInvitation(nextInvitation)
+    invitationEditState.value = 'success'
+    hasUnsavedInvitationChanges.value = false
+  }
+  catch (error: unknown) {
+    const parsedError = parseInvitationApiError(error)
+
+    if (parsedError.status === 401 || parsedError.status === 403) {
+      clearManagementToken()
+      canRetry.value = false
+      errorMessage.value = parsedError.message
+      pageState.value = 'error'
+      return
+    }
+
+    invitationEditError.value = parsedError.message
+    invitationEditFieldErrors.value = parsedError.fieldErrors
+    invitationEditState.value = 'error'
   }
 }
 
@@ -363,7 +432,31 @@ function formatDate(value: string): string {
   }).format(date)
 }
 
-onMounted(loadManagedInvitation)
+function warnBeforeUnload(event: BeforeUnloadEvent): void {
+  if (!hasUnsavedInvitationChanges.value) {
+    return
+  }
+
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+onBeforeRouteLeave(() => {
+  if (!hasUnsavedInvitationChanges.value) {
+    return true
+  }
+
+  return window.confirm('Есть несохранённые изменения. Покинуть страницу без сохранения?')
+})
+
+onMounted(() => {
+  window.addEventListener('beforeunload', warnBeforeUnload)
+  void loadManagedInvitation()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', warnBeforeUnload)
+})
 </script>
 
 <template>
@@ -458,6 +551,15 @@ onMounted(loadManagedInvitation)
               Приглашение опубликовано. Теперь публичную ссылку можно отправлять получателю.
             </p>
           </section>
+
+          <InvitationDetailsEditor
+            :invitation="invitation"
+            :save-error="invitationEditError"
+            :save-state="invitationEditState"
+            :server-field-errors="invitationEditFieldErrors"
+            @dirty="markInvitationDetailsDirty"
+            @save="saveInvitationDetails"
+          />
 
           <template v-if="invitation.publication_status === 'published'">
             <section
@@ -631,18 +733,6 @@ onMounted(loadManagedInvitation)
 
           <dl class="manage-card__details">
             <div>
-              <dt>От кого</dt>
-              <dd>{{ invitation.author_name }}</dd>
-            </div>
-            <div>
-              <dt>Для кого</dt>
-              <dd>{{ invitation.recipient_name }}</dd>
-            </div>
-            <div v-if="invitation.message.trim()" class="manage-card__message">
-              <dt>Сообщение</dt>
-              <dd>{{ invitation.message }}</dd>
-            </div>
-            <div>
               <dt>Режим</dt>
               <dd>
                 {{ creationModePresentation.icon }} {{ creationModePresentation.label }}
@@ -655,6 +745,10 @@ onMounted(loadManagedInvitation)
             <div>
               <dt>Создано</dt>
               <dd>{{ formatDate(invitation.created_at) }}</dd>
+            </div>
+            <div>
+              <dt>Последнее изменение</dt>
+              <dd>{{ formatDate(invitation.updated_at) }}</dd>
             </div>
           </dl>
 
