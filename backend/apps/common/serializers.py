@@ -1,5 +1,6 @@
 """Serializers for common API responses."""
 
+from collections.abc import Mapping
 from datetime import datetime
 from uuid import UUID
 
@@ -101,6 +102,68 @@ class InvitationSerializer(serializers.ModelSerializer):
     def get_server_now(self, invitation: Invitation) -> datetime:
         """Return a non-persisted server-clock snapshot for client expiry decisions."""
         return now()
+
+
+class InvitationManagementUpdateSerializer(serializers.ModelSerializer):
+    """Validate the small set of fields an author may edit through a capability."""
+
+    editable_fields = (
+        "author_name",
+        "recipient_name",
+        "message",
+        "creation_mode",
+    )
+
+    class Meta:
+        """Expose only fields that are safe to update after creation."""
+
+        model = Invitation
+        fields = (
+            "author_name",
+            "recipient_name",
+            "message",
+            "creation_mode",
+        )
+        extra_kwargs = {
+            "author_name": {"min_length": 1, "trim_whitespace": True},
+            "recipient_name": {"min_length": 1, "trim_whitespace": True},
+            "message": {
+                "required": False,
+                "allow_blank": True,
+                "trim_whitespace": True,
+            },
+            "creation_mode": {"required": False},
+        }
+
+    def to_internal_value(self, data: object) -> dict[str, object]:
+        """Reject unknown and lifecycle fields instead of silently ignoring them."""
+        if isinstance(data, Mapping):
+            unsupported_fields = sorted(set(data) - set(self.editable_fields))
+            if unsupported_fields:
+                raise serializers.ValidationError(
+                    {
+                        field: ["This field cannot be edited through this endpoint."]
+                        for field in unsupported_fields
+                    }
+                )
+        return super().to_internal_value(data)
+
+    def update(
+        self,
+        invitation: Invitation,
+        validated_data: dict[str, object],
+    ) -> Invitation:
+        """Persist only actual changes so exact retries keep ``updated_at`` stable."""
+        changed_fields: list[str] = []
+        for field, value in validated_data.items():
+            if getattr(invitation, field) == value:
+                continue
+            setattr(invitation, field, value)
+            changed_fields.append(field)
+
+        if changed_fields:
+            invitation.save(update_fields=(*changed_fields, "updated_at"))
+        return invitation
 
 
 class InvitationResponseUpdateSerializer(serializers.Serializer):
