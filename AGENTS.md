@@ -8,6 +8,7 @@ These rules apply to the entire repository.
 - Do not mix backend concerns into frontend components or frontend concerns into Django modules. Communicate through documented HTTP APIs.
 - Keep public REST endpoints under `/api/v1/`. Schema and documentation endpoints may remain under `/api/`.
 - Treat `Invitation.publication_status` as a security boundary: recipient-facing reads and mutations must expose only `published` invitations, while drafts require the matching management capability.
+- Keep the builder restricted to `extended` invitations in `draft` state. Store navigation state in the route query and never place the management token in query parameters or path segments.
 - Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 
