@@ -17,6 +17,7 @@ from apps.common.authentication import (
 from apps.common.capabilities import generate_management_token, hash_management_token
 from apps.common.mixins import NoStoreResponseMixin
 from apps.common.models import Invitation
+from apps.common.screens import ensure_default_invitation_screens
 from apps.common.serializers import (
     HealthResponseSerializer,
     InvitationCreateResponseSerializer,
@@ -84,15 +85,17 @@ class InvitationCreateView(NoStoreResponseMixin, generics.CreateAPIView):
             Invitation.CreationMode.QUICK,
         )
         is_extended = creation_mode == Invitation.CreationMode.EXTENDED
-        invitation = serializer.save(
-            management_token_hash=hash_management_token(management_token),
-            publication_status=(
-                Invitation.PublicationStatus.DRAFT
-                if is_extended
-                else Invitation.PublicationStatus.PUBLISHED
-            ),
-            published_at=None if is_extended else now(),
-        )
+        with transaction.atomic():
+            invitation = serializer.save(
+                management_token_hash=hash_management_token(management_token),
+                publication_status=(
+                    Invitation.PublicationStatus.DRAFT
+                    if is_extended
+                    else Invitation.PublicationStatus.PUBLISHED
+                ),
+                published_at=None if is_extended else now(),
+            )
+            ensure_default_invitation_screens(invitation)
         response_serializer = InvitationCreateResponseSerializer(
             invitation,
             context={

@@ -2,10 +2,12 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import BuilderInvitationStep from '../../../../components/builder/BuilderInvitationStep.vue'
+import BuilderScreenConfigSummary from '../../../../components/builder/BuilderScreenConfigSummary.vue'
 import { useBuilderAutosave } from '../../../../composables/useBuilderAutosave'
 import { useInvitationsApi } from '../../../../composables/useInvitationsApi'
 import { useManagementToken } from '../../../../composables/useManagementToken'
 import type { InvitationRecord } from '../../../../types/invitation'
+import type { InvitationScreenRecord } from '../../../../types/screen'
 import {
   BUILDER_STEPS,
   builderStepSessionKey,
@@ -23,6 +25,7 @@ import {
   parseInvitationApiError,
   type InvitationApiError,
 } from '../../../../utils/invitations'
+import { getInvitationScreensForBuilderStep } from '../../../../utils/screens'
 
 type BuilderPageState = 'blocked' | 'error' | 'loading' | 'missing-token' | 'ready'
 
@@ -31,6 +34,7 @@ const router = useRouter()
 const api = useInvitationsApi()
 const pageState = ref<BuilderPageState>('loading')
 const invitation = ref<InvitationRecord | null>(null)
+const screens = ref<InvitationScreenRecord[]>([])
 const currentStep = ref<BuilderStepNumber>(1)
 const accessBlock = ref<BuilderAccessBlock | null>(null)
 const errorMessage = ref('')
@@ -42,6 +46,9 @@ const { clearManagementToken, takeManagementToken } = useManagementToken(invitat
 const activeStep = computed(() => getBuilderStepDefinition(currentStep.value))
 const previousStep = computed(() => getPreviousBuilderStep(currentStep.value))
 const nextStep = computed(() => getNextBuilderStep(currentStep.value))
+const activeScreens = computed(() => (
+  getInvitationScreensForBuilderStep(screens.value, currentStep.value)
+))
 const blockedPresentation = computed(() => {
   if (accessBlock.value === 'quick-mode') {
     return {
@@ -198,6 +205,7 @@ async function loadBuilder(): Promise<void> {
   errorMessage.value = ''
   canRetry.value = true
   invitation.value = null
+  screens.value = []
   accessBlock.value = null
 
   if (!isInvitationId(invitationId.value)) {
@@ -225,6 +233,9 @@ async function loadBuilder(): Promise<void> {
       return
     }
 
+    const nextScreens = await api.getInvitationScreens(invitationId.value, token)
+
+    screens.value = nextScreens
     autosave.resetFromInvitation(nextInvitation)
     pageState.value = 'ready'
   }
@@ -400,23 +411,26 @@ onUnmounted(() => {
             <span>{{ activeStep.description }}</span>
           </div>
 
-          <BuilderInvitationStep
-            v-if="currentStep === 1"
-            v-model:author-name="autosave.form.author_name"
-            v-model:recipient-name="autosave.form.recipient_name"
-            v-model:message="autosave.form.message"
-            v-model:creation-mode="autosave.form.creation_mode"
-            :status="autosave.status.value"
-            :error-message="autosave.errorMessage.value"
-            :field-errors="autosave.fieldErrors.value"
-            :is-dirty="autosave.isDirty.value"
-            @retry="autosave.retry()"
-            @save-now="autosave.flush()"
-          />
+          <template v-if="currentStep === 1">
+            <BuilderInvitationStep
+              v-model:author-name="autosave.form.author_name"
+              v-model:recipient-name="autosave.form.recipient_name"
+              v-model:message="autosave.form.message"
+              v-model:creation-mode="autosave.form.creation_mode"
+              :status="autosave.status.value"
+              :error-message="autosave.errorMessage.value"
+              :field-errors="autosave.fieldErrors.value"
+              :is-dirty="autosave.isDirty.value"
+              @retry="autosave.retry()"
+              @save-now="autosave.flush()"
+            />
+            <BuilderScreenConfigSummary :screens="activeScreens" />
+          </template>
 
           <section v-else class="builder-stage__placeholder" aria-label="Содержимое будущего шага">
             <p>Каркас шага готов</p>
             <h3>Что появится здесь в следующих задачах</h3>
+            <BuilderScreenConfigSummary :screens="activeScreens" />
             <ul>
               <li v-for="feature in activeStep.plannedFeatures" :key="feature">
                 <span aria-hidden="true">✓</span>
@@ -424,7 +438,7 @@ onUnmounted(() => {
               </li>
             </ul>
             <p class="builder-stage__notice">
-              Первый шаг уже сохраняется автоматически. Остальные редакторы будут подключаться
+              Конфигурация экрана уже хранится на сервере. Поля редактирования подключим
               отдельными проверяемыми итерациями.
             </p>
           </section>
