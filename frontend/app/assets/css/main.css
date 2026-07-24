@@ -2637,6 +2637,138 @@ button {
   line-height: 1.55;
 }
 
+.builder-invitation-form {
+  display: grid;
+  padding: 26px;
+  gap: 22px;
+  border: 1px solid #efd1dc;
+  border-radius: 22px;
+  background: linear-gradient(160deg, #fff, #fff9fb);
+  grid-column: 1 / -1;
+}
+
+.builder-invitation-form__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.builder-invitation-form__heading p,
+.builder-invitation-form__heading h3,
+.builder-invitation-form__description {
+  margin: 0;
+}
+
+.builder-invitation-form__heading p {
+  color: #aa5574;
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.builder-invitation-form__heading h3 {
+  margin-top: 4px;
+  color: #4d2a3b;
+  font-size: 1.16rem;
+}
+
+.builder-invitation-form__description {
+  margin-top: -10px;
+  color: #80616f;
+  font-size: .8rem;
+  line-height: 1.55;
+}
+
+.builder-autosave-badge {
+  display: inline-flex;
+  min-height: 34px;
+  padding: 7px 11px;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.builder-autosave-badge--idle,
+.builder-autosave-badge--saved {
+  color: #367054;
+  border-color: #cce8da;
+  background: #edf9f3;
+}
+
+.builder-autosave-badge--dirty {
+  color: #916423;
+  border-color: #eed9ad;
+  background: #fff8e8;
+}
+
+.builder-autosave-badge--saving {
+  color: #8a5268;
+  border-color: #ebccd8;
+  background: #fff3f7;
+}
+
+.builder-autosave-badge--error {
+  color: #a23f51;
+  border-color: #efc0c8;
+  background: #fff0f2;
+}
+
+.builder-invitation-form__modes {
+  padding-top: 2px;
+}
+
+.builder-invitation-form__error {
+  padding: 12px 14px;
+  margin: 0;
+  color: #98384b;
+  border: 1px solid #efc2cb;
+  border-radius: 14px;
+  background: #fff1f3;
+  font-size: .78rem;
+  line-height: 1.5;
+}
+
+.builder-invitation-form__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.builder-invitation-form__actions button {
+  min-height: 42px;
+  padding: 9px 16px;
+  cursor: pointer;
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 900;
+}
+
+.builder-invitation-form__actions button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.builder-invitation-form__retry {
+  color: #9c3c51;
+  border: 1px solid #e8b6c1;
+  background: #fff;
+}
+
+.builder-invitation-form__save-now {
+  color: #fff;
+  border: 0;
+  background: linear-gradient(145deg, #e85f8d, #d83e70);
+  box-shadow: 0 9px 20px rgb(209 49 99 / 15%);
+}
+
 .builder-stage__placeholder {
   padding: 24px;
   border: 1px dashed #e3b8c8;
@@ -3009,6 +3141,26 @@ button {
   .builder-stage__placeholder {
     padding: 19px 16px;
     grid-column: auto;
+  }
+
+  .builder-invitation-form {
+    padding: 20px 16px;
+    grid-column: auto;
+  }
+
+  .builder-invitation-form__heading,
+  .builder-invitation-form__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .builder-autosave-badge {
+    align-self: flex-start;
+    white-space: normal;
+  }
+
+  .builder-invitation-form__actions button {
+    width: 100%;
   }
 
   .builder-actions {
