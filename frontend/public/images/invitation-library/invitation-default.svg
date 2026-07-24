@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff3f7"/>
+      <stop offset="1" stop-color="#f8c8d8"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="420" rx="40" fill="url(#bg)"/>
+
+  <circle cx="104" cy="92" r="18" fill="#fff" opacity=".7"/>
+  <circle cx="540" cy="78" r="28" fill="#fff" opacity=".45"/>
+  <g>
+    <rect x="142" y="102" width="356" height="224" rx="28" fill="#fffafc"/>
+    <path d="M158 126l162 118 162-118" fill="none" stroke="#d84d79" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M158 307l123-101M482 307L359 206" fill="none" stroke="#ef9db8" stroke-width="10" stroke-linecap="round"/>
+  </g>
+  <path d="M320 269c-34-25-61-45-61-75 0-23 18-40 40-40 13 0 23 6 30 16 7-10 17-16 30-16 22 0 40 17 40 40 0 30-27 50-61 75l-9 7z" fill="#ee5d8c"/>
+  <path d="M95 250c-19-14-34-25-34-42 0-13 10-22 22-22 7 0 13 3 17 9 4-6 10-9 17-9 12 0 22 9 22 22 0 17-15 28-34 42l-5 4z" fill="#f07aa0" opacity=".8"/>
+  <path d="M544 240c-16-12-29-22-29-36 0-11 9-19 19-19 6 0 11 3 15 8 3-5 8-8 14-8 11 0 20 8 20 19 0 14-13 24-29 36l-5 4z" fill="#c33a6c" opacity=".78"/>
+
+</svg>

@@ -1,3 +1,5 @@
+import type { InvitationImageKey } from './invitation-image'
+
 export const INVITATION_SCREEN_TYPES = [
   'invitation',
   'acceptance',
@@ -13,5 +15,5 @@ export type InvitationScreenRecord = {
   title: string
   subtitle: string
   button_text: string
-  image_key: string
+  image_key: InvitationImageKey
 }
