@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import BuilderInvitationStep from '../../../../components/builder/BuilderInvitationStep.vue'
+import { useBuilderAutosave } from '../../../../composables/useBuilderAutosave'
 import { useInvitationsApi } from '../../../../composables/useInvitationsApi'
 import { useManagementToken } from '../../../../composables/useManagementToken'
 import type { InvitationRecord } from '../../../../types/invitation'
@@ -16,7 +18,11 @@ import {
   type BuilderAccessBlock,
   type BuilderStepNumber,
 } from '../../../../utils/builder'
-import { isInvitationId, parseInvitationApiError } from '../../../../utils/invitations'
+import {
+  isInvitationId,
+  parseInvitationApiError,
+  type InvitationApiError,
+} from '../../../../utils/invitations'
 
 type BuilderPageState = 'blocked' | 'error' | 'loading' | 'missing-token' | 'ready'
 
@@ -29,7 +35,6 @@ const currentStep = ref<BuilderStepNumber>(1)
 const accessBlock = ref<BuilderAccessBlock | null>(null)
 const errorMessage = ref('')
 const canRetry = ref(true)
-const hasUnsavedBuilderChanges = ref(false)
 const isStepNavigationReady = ref(false)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const managementPath = computed(() => `/manage/${encodeURIComponent(invitationId.value)}`)
@@ -55,6 +60,44 @@ const blockedPresentation = computed(() => {
   }
 })
 
+const autosave = useBuilderAutosave({
+  async save(payload) {
+    const token = takeManagementToken()
+
+    if (!token) {
+      throw { statusCode: 401 }
+    }
+
+    return api.updateManagedInvitation(invitationId.value, token, payload)
+  },
+  onSaved(nextInvitation) {
+    invitation.value = nextInvitation
+    accessBlock.value = getBuilderAccessBlock(nextInvitation)
+
+    if (accessBlock.value) {
+      pageState.value = 'blocked'
+    }
+  },
+  onAuthorizationError(error) {
+    handleAuthorizationError(error)
+  },
+})
+
+const autosavePresentation = computed(() => {
+  switch (autosave.status.value) {
+    case 'dirty':
+      return { icon: '●', label: 'Изменения не сохранены', tone: 'dirty' }
+    case 'saving':
+      return { icon: '⏳', label: 'Сохранение…', tone: 'saving' }
+    case 'saved':
+      return { icon: '✓', label: 'Сохранено', tone: 'saved' }
+    case 'error':
+      return { icon: '!', label: 'Не удалось сохранить', tone: 'error' }
+    default:
+      return { icon: '✓', label: 'Все изменения сохранены', tone: 'idle' }
+  }
+})
+
 useHead({
   title: 'Конструктор приглашения — Date Planner',
   meta: [
@@ -62,6 +105,13 @@ useHead({
     { name: 'referrer', content: 'no-referrer' },
   ],
 })
+
+function handleAuthorizationError(error: InvitationApiError): void {
+  clearManagementToken()
+  canRetry.value = false
+  errorMessage.value = error.message
+  pageState.value = 'error'
+}
 
 function readStoredStep(): string | null {
   try {
@@ -104,26 +154,43 @@ async function restoreStepNavigation(): Promise<void> {
   isStepNavigationReady.value = true
 }
 
+async function flushCurrentStep(): Promise<boolean> {
+  if (currentStep.value !== 1 || !autosave.hasUnsavedChanges.value) {
+    return true
+  }
+
+  const saved = await autosave.flush()
+
+  return saved && pageState.value === 'ready'
+}
+
 async function goToStep(step: BuilderStepNumber): Promise<void> {
-  if (step === currentStep.value) {
+  if (step === currentStep.value || !await flushCurrentStep()) {
     return
   }
 
-  currentStep.value = step
   persistStep(step)
   await replaceStepQuery(step)
 }
 
-function goToPreviousStep(): void {
+async function goToPreviousStep(): Promise<void> {
   if (previousStep.value) {
-    void goToStep(previousStep.value)
+    await goToStep(previousStep.value)
   }
 }
 
-function goToNextStep(): void {
+async function goToNextStep(): Promise<void> {
   if (nextStep.value) {
-    void goToStep(nextStep.value)
+    await goToStep(nextStep.value)
   }
+}
+
+async function finishBuilder(): Promise<void> {
+  if (!await flushCurrentStep()) {
+    return
+  }
+
+  await router.push(managementPath.value)
 }
 
 async function loadBuilder(): Promise<void> {
@@ -152,14 +219,21 @@ async function loadBuilder(): Promise<void> {
 
     invitation.value = nextInvitation
     accessBlock.value = block
-    pageState.value = block ? 'blocked' : 'ready'
+
+    if (block) {
+      pageState.value = 'blocked'
+      return
+    }
+
+    autosave.resetFromInvitation(nextInvitation)
+    pageState.value = 'ready'
   }
   catch (error: unknown) {
     const parsedError = parseInvitationApiError(error)
 
     if (parsedError.status === 401 || parsedError.status === 403) {
-      clearManagementToken()
-      canRetry.value = false
+      handleAuthorizationError(parsedError)
+      return
     }
 
     errorMessage.value = parsedError.message
@@ -168,7 +242,7 @@ async function loadBuilder(): Promise<void> {
 }
 
 function warnBeforeUnload(event: BeforeUnloadEvent): void {
-  if (!hasUnsavedBuilderChanges.value) {
+  if (!autosave.hasUnsavedChanges.value) {
     return
   }
 
@@ -195,12 +269,32 @@ watch(
   },
 )
 
-onBeforeRouteLeave(() => {
-  if (!hasUnsavedBuilderChanges.value) {
+onBeforeRouteUpdate(async (to) => {
+  const destinationStep = parseBuilderStep(to.query.step)
+
+  if (
+    destinationStep
+    && destinationStep !== currentStep.value
+    && !await flushCurrentStep()
+  ) {
+    return false
+  }
+
+  return true
+})
+
+onBeforeRouteLeave(async () => {
+  if (!autosave.hasUnsavedChanges.value) {
     return true
   }
 
-  return window.confirm('Есть несохранённые изменения конструктора. Покинуть страницу?')
+  if (await autosave.flush()) {
+    return true
+  }
+
+  return window.confirm(
+    'Не удалось сохранить последние изменения. Покинуть конструктор и потерять их?',
+  )
 })
 
 onMounted(async () => {
@@ -211,6 +305,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('beforeunload', warnBeforeUnload)
+  autosave.dispose()
 })
 </script>
 
@@ -268,7 +363,7 @@ onUnmounted(() => {
           <h1 id="builder-page-title">Конструктор приглашения</h1>
           <span>
             {{ invitation.author_name }}, настрой сценарий для {{ invitation.recipient_name }}.
-            Текущий шаг сохраняется в этой вкладке.
+            Изменения первого шага сохраняются автоматически.
           </span>
         </header>
 
@@ -305,7 +400,21 @@ onUnmounted(() => {
             <span>{{ activeStep.description }}</span>
           </div>
 
-          <section class="builder-stage__placeholder" aria-label="Содержимое будущего шага">
+          <BuilderInvitationStep
+            v-if="currentStep === 1"
+            v-model:author-name="autosave.form.author_name"
+            v-model:recipient-name="autosave.form.recipient_name"
+            v-model:message="autosave.form.message"
+            v-model:creation-mode="autosave.form.creation_mode"
+            :status="autosave.status.value"
+            :error-message="autosave.errorMessage.value"
+            :field-errors="autosave.fieldErrors.value"
+            :is-dirty="autosave.isDirty.value"
+            @retry="autosave.retry()"
+            @save-now="autosave.flush()"
+          />
+
+          <section v-else class="builder-stage__placeholder" aria-label="Содержимое будущего шага">
             <p>Каркас шага готов</p>
             <h3>Что появится здесь в следующих задачах</h3>
             <ul>
@@ -315,8 +424,8 @@ onUnmounted(() => {
               </li>
             </ul>
             <p class="builder-stage__notice">
-              Сейчас шаги отвечают за безопасную навигацию и восстановление позиции. Поля и
-              автосохранение будут подключаться отдельными проверяемыми итерациями.
+              Первый шаг уже сохраняется автоматически. Остальные редакторы будут подключаться
+              отдельными проверяемыми итерациями.
             </p>
           </section>
         </article>
@@ -325,26 +434,38 @@ onUnmounted(() => {
           <button
             type="button"
             class="builder-actions__secondary"
-            :disabled="previousStep === null"
+            :disabled="previousStep === null || autosave.status.value === 'saving'"
             @click="goToPreviousStep"
           >
             ← Назад
           </button>
-          <div class="builder-actions__status" role="status" aria-live="polite">
+          <div
+            class="builder-actions__status"
+            :class="`builder-actions__status--${autosavePresentation.tone}`"
+            role="status"
+            aria-live="polite"
+          >
             <strong>Шаг {{ currentStep }} из {{ BUILDER_STEPS.length }}</strong>
-            <span>Позиция сохранена</span>
+            <span>{{ currentStep === 1 ? autosavePresentation.label : 'Позиция сохранена' }}</span>
           </div>
           <button
             v-if="nextStep"
             type="button"
             class="builder-actions__primary"
+            :disabled="autosave.status.value === 'saving'"
             @click="goToNextStep"
           >
             Далее →
           </button>
-          <NuxtLink v-else class="builder-actions__primary" :to="managementPath">
+          <button
+            v-else
+            type="button"
+            class="builder-actions__primary"
+            :disabled="autosave.status.value === 'saving'"
+            @click="finishBuilder"
+          >
             Завершить обзор
-          </NuxtLink>
+          </button>
         </footer>
       </template>
     </section>
