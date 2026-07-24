@@ -13,6 +13,7 @@ from apps.common.models import (
     INVITATION_ANSWER_STATUS_CHOICES,
     Invitation,
     InvitationPlanOption,
+    InvitationScreen,
 )
 
 
@@ -21,6 +22,23 @@ class HealthResponseSerializer(serializers.Serializer):
 
     status = serializers.CharField(read_only=True)
     service = serializers.CharField(read_only=True)
+
+
+class InvitationScreenSerializer(serializers.ModelSerializer):
+    """Expose only the configurable fields required by the author builder."""
+
+    class Meta:
+        """Keep database identifiers and timestamps internal to the service."""
+
+        model = InvitationScreen
+        fields = (
+            "screen_type",
+            "title",
+            "subtitle",
+            "button_text",
+            "image_key",
+        )
+        read_only_fields = fields
 
 
 class InvitationPlanOptionSerializer(serializers.ModelSerializer):
@@ -163,6 +181,11 @@ class InvitationManagementUpdateSerializer(serializers.ModelSerializer):
 
         if changed_fields:
             invitation.save(update_fields=(*changed_fields, "updated_at"))
+
+        if invitation.creation_mode == Invitation.CreationMode.EXTENDED:
+            from apps.common.screens import ensure_default_invitation_screens
+
+            ensure_default_invitation_screens(invitation)
         return invitation
 
 

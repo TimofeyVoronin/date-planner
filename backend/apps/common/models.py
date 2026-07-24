@@ -134,6 +134,59 @@ class Invitation(models.Model):
         return f"{self.author_name} → {self.recipient_name}"
 
 
+class InvitationScreen(models.Model):
+    """One configurable recipient-facing screen in an extended invitation flow."""
+
+    class ScreenType(models.TextChoices):
+        """Stable screen identifiers shared by the API and frontend builder."""
+
+        INVITATION = "invitation", "Invitation"
+        ACCEPTANCE = "acceptance", "Acceptance"
+        DATE_SELECTION = "date_selection", "Date selection"
+        ACTIVITY_SELECTION = "activity_selection", "Activity selection"
+        FINAL = "final", "Final"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invitation = models.ForeignKey(
+        Invitation,
+        on_delete=models.CASCADE,
+        related_name="screens",
+    )
+    screen_type = models.CharField(max_length=18, choices=ScreenType.choices)
+    title = models.CharField(max_length=160)
+    subtitle = models.CharField(max_length=500, blank=True, default="")
+    button_text = models.CharField(max_length=80, blank=True, default="")
+    image_key = models.CharField(max_length=80, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Guarantee one valid configuration for each invitation screen type."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=("invitation", "screen_type"),
+                name="unique_invitation_screen_type",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    screen_type__in=(
+                        "invitation",
+                        "acceptance",
+                        "date_selection",
+                        "activity_selection",
+                        "final",
+                    )
+                ),
+                name="invitation_screen_type_valid",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return a concise screen identifier for diagnostics."""
+        return f"{self.invitation_id}: {self.screen_type}"
+
+
 class InvitationPlanOption(models.Model):
     """One ordered date and place proposed for an accepted invitation."""
 

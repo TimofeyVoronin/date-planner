@@ -5,6 +5,7 @@ from django.urls import path
 from apps.common.confirmation_views import InvitationConfirmationView
 from apps.common.planning_views import InvitationPlanOptionsView, InvitationSelectionView
 from apps.common.publication_views import InvitationPublicationView
+from apps.common.screen_views import InvitationScreenListView
 from apps.common.views import (
     InvitationCreateView,
     InvitationDetailView,
@@ -27,6 +28,11 @@ urlpatterns = [
         "invitations/<uuid:pk>/manage/",
         InvitationManagementDetailView.as_view(),
         name="invitation-management-detail",
+    ),
+    path(
+        "invitations/<uuid:pk>/screens/",
+        InvitationScreenListView.as_view(),
+        name="invitation-screen-list",
     ),
     path(
         "invitations/<uuid:pk>/publish/",
