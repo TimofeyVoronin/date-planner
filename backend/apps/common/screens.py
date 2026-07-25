@@ -12,6 +12,7 @@ class InvitationScreenDefaults(TypedDict):
     title: str
     subtitle: str
     button_text: str
+    secondary_button_text: str
     image_key: str
 
 
@@ -28,30 +29,35 @@ DEFAULT_INVITATION_SCREEN_CONFIGS: Final[dict[str, InvitationScreenDefaults]] = 
         "title": "Ты пойдёшь со мной на свидание?",
         "subtitle": "Для тебя приготовили особенное приглашение 💌",
         "button_text": "Да! 😍",
+        "secondary_button_text": "Нет",
         "image_key": "invitation-default",
     },
     InvitationScreen.ScreenType.ACCEPTANCE: {
         "title": "Ура! 💘",
         "subtitle": "Теперь давай выберем, когда увидимся.",
         "button_text": "Выбрать дату",
+        "secondary_button_text": "",
         "image_key": "acceptance-default",
     },
     InvitationScreen.ScreenType.DATE_SELECTION: {
         "title": "Когда тебе удобно?",
         "subtitle": "Выбери один из предложенных вариантов даты и времени.",
         "button_text": "Продолжить",
+        "secondary_button_text": "",
         "image_key": "date-selection-default",
     },
     InvitationScreen.ScreenType.ACTIVITY_SELECTION: {
         "title": "Чем займёмся?",
         "subtitle": "Выбери вариант, который нравится больше всего.",
         "button_text": "Продолжить",
+        "secondary_button_text": "",
         "image_key": "activity-selection-default",
     },
     InvitationScreen.ScreenType.FINAL: {
         "title": "Договорились 💞",
         "subtitle": "Осталось дождаться итогового подтверждения плана.",
         "button_text": "Посмотреть план",
+        "secondary_button_text": "",
         "image_key": "final-default",
     },
 }

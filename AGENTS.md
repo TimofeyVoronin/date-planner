@@ -12,6 +12,7 @@ These rules apply to the entire repository.
 - Keep builder autosave sequential and idempotent: debounce ordinary edits, flush before navigation, send only the minimal PATCH, and preserve edits made while a request is in flight.
 - Keep extended invitation screens complete and unique: exactly one configuration per supported screen type, stable API ordering, and no screen rows for newly created quick invitations.
 - Keep the built-in image catalog local, deterministic, accessible, and keyed by stable values that remain compatible with the owning screen type. Do not add third-party image URLs to invitation screen configuration.
+- Treat screen configuration as a separate autosaved resource: validate image compatibility on both sides, reject unknown fields, keep exact PATCH retries idempotent, and expose only recipient-safe screen fields publicly.
 - Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 

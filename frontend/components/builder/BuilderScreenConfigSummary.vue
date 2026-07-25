@@ -32,8 +32,7 @@ function imageLabel(imageKey: string): string {
       <p>Подготовленные экраны</p>
       <h3 id="builder-screen-summary-title">Основа сценария уже создана</h3>
       <span>
-        Сейчас показаны серверные значения по умолчанию. Редактирование текстов и выбор изображения
-        появятся в следующих задачах.
+        Здесь показаны текущие серверные значения экранов, которые ещё не редактируются на этом шаге.
       </span>
     </div>
 
@@ -62,7 +61,10 @@ function imageLabel(imageKey: string): string {
           <p>{{ getInvitationScreenPresentation(screen.screen_type).label }}</p>
           <h4>{{ screen.title }}</h4>
           <span>{{ screen.subtitle }}</span>
-          <small v-if="screen.button_text">Кнопка: {{ screen.button_text }}</small>
+          <small v-if="screen.button_text">Основная кнопка: {{ screen.button_text }}</small>
+          <small v-if="screen.secondary_button_text">
+            Дополнительная кнопка: {{ screen.secondary_button_text }}
+          </small>
           <small>Иллюстрация: {{ imageLabel(screen.image_key) }}</small>
         </div>
       </article>

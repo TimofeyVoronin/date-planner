@@ -15,6 +15,8 @@ from apps.common.models import (
     InvitationPlanOption,
     InvitationScreen,
 )
+from apps.common.screen_images import is_invitation_screen_image_compatible
+from apps.common.screens import order_invitation_screens
 
 
 class HealthResponseSerializer(serializers.Serializer):
@@ -36,9 +38,87 @@ class InvitationScreenSerializer(serializers.ModelSerializer):
             "title",
             "subtitle",
             "button_text",
+            "secondary_button_text",
             "image_key",
         )
         read_only_fields = fields
+
+
+class InvitationScreenUpdateSerializer(serializers.ModelSerializer):
+    """Validate editable fields of the primary invitation screen."""
+
+    editable_fields = (
+        "title",
+        "subtitle",
+        "button_text",
+        "secondary_button_text",
+        "image_key",
+    )
+
+    class Meta:
+        """Keep lifecycle, ownership, and screen type server-controlled."""
+
+        model = InvitationScreen
+        fields = (
+            "title",
+            "subtitle",
+            "button_text",
+            "secondary_button_text",
+            "image_key",
+        )
+        extra_kwargs = {
+            "title": {"min_length": 1, "trim_whitespace": True},
+            "subtitle": {"allow_blank": True, "trim_whitespace": True},
+            "button_text": {"min_length": 1, "allow_blank": False, "trim_whitespace": True},
+            "secondary_button_text": {
+                "min_length": 1,
+                "allow_blank": False,
+                "trim_whitespace": True,
+            },
+            "image_key": {"min_length": 1, "allow_blank": False, "trim_whitespace": True},
+        }
+
+    def to_internal_value(self, data: object) -> dict[str, object]:
+        """Reject unknown and server-controlled fields instead of ignoring them."""
+        if isinstance(data, Mapping):
+            unsupported_fields = sorted(set(data) - set(self.editable_fields))
+            if unsupported_fields:
+                raise serializers.ValidationError(
+                    {
+                        field: ["This field cannot be edited through this endpoint."]
+                        for field in unsupported_fields
+                    }
+                )
+        return super().to_internal_value(data)
+
+    def validate_image_key(self, image_key: str) -> str:
+        """Accept only built-in image keys assigned to the invitation screen."""
+        screen = self.instance
+        if not isinstance(screen, InvitationScreen):
+            raise RuntimeError("Screen updates require an InvitationScreen instance.")
+        if not is_invitation_screen_image_compatible(screen.screen_type, image_key):
+            raise serializers.ValidationError(
+                "Choose a built-in image that belongs to this invitation screen."
+            )
+        return image_key
+
+    def update(
+        self,
+        screen: InvitationScreen,
+        validated_data: dict[str, object],
+    ) -> InvitationScreen:
+        """Persist only actual changes so exact PATCH retries remain idempotent."""
+        changed_fields: list[str] = []
+        for field, value in validated_data.items():
+            if getattr(screen, field) == value:
+                continue
+            setattr(screen, field, value)
+            changed_fields.append(field)
+
+        if changed_fields:
+            screen.save(update_fields=(*changed_fields, "updated_at"))
+
+        return screen
 
 
 class InvitationPlanOptionSerializer(serializers.ModelSerializer):
@@ -56,6 +136,9 @@ class InvitationSerializer(serializers.ModelSerializer):
     """Validate invitation input and expose its public representation."""
 
     plan_options = InvitationPlanOptionSerializer(many=True, read_only=True)
+    screens = serializers.SerializerMethodField(
+        help_text="Recipient-facing screen configuration in stable flow order."
+    )
     selected_option_id = serializers.UUIDField(read_only=True, allow_null=True)
     selected_at = serializers.DateTimeField(read_only=True, allow_null=True)
     confirmed_at = serializers.DateTimeField(read_only=True, allow_null=True)
@@ -77,6 +160,7 @@ class InvitationSerializer(serializers.ModelSerializer):
             "published_at",
             "response_status",
             "responded_at",
+            "screens",
             "plan_options",
             "selected_option_id",
             "selected_at",
@@ -91,6 +175,7 @@ class InvitationSerializer(serializers.ModelSerializer):
             "published_at",
             "response_status",
             "responded_at",
+            "screens",
             "plan_options",
             "selected_option_id",
             "selected_at",
@@ -115,6 +200,15 @@ class InvitationSerializer(serializers.ModelSerializer):
                 ),
             },
         }
+
+    @extend_schema_field(InvitationScreenSerializer(many=True))
+    def get_screens(self, invitation: Invitation) -> list[dict[str, object]]:
+        """Expose complete extended-screen configuration without internal identifiers."""
+        if invitation.creation_mode != Invitation.CreationMode.EXTENDED:
+            return []
+
+        screens = order_invitation_screens(invitation.screens.all())
+        return InvitationScreenSerializer(screens, many=True).data
 
     @extend_schema_field(serializers.DateTimeField())
     def get_server_now(self, invitation: Invitation) -> datetime:

@@ -1,14 +1,25 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { InvitationImageKey } from '../../types/invitation-image'
 import type { InvitationScreenType } from '../../types/screen'
 import {
   getInvitationImagesForScreens,
   resolveInvitationImageUrl,
 } from '../../utils/invitationImages'
 import { getInvitationScreenPresentation } from '../../utils/screens'
+import BuilderImageOption from './BuilderImageOption.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
+  editableScreenType?: InvitationScreenType | null
   screenTypes: readonly InvitationScreenType[]
+  selectedImageKey?: InvitationImageKey | null
+}>(), {
+  editableScreenType: null,
+  selectedImageKey: null,
+})
+
+const emit = defineEmits<{
+  selectImage: [imageKey: InvitationImageKey]
 }>()
 
 const config = useRuntimeConfig()
@@ -17,6 +28,9 @@ const imagesByScreen = computed(() => props.screenTypes.map(screenType => ({
   presentation: getInvitationScreenPresentation(screenType),
   images: getInvitationImagesForScreens([screenType]),
 })))
+const hasSelectableGroup = computed(() => (
+  props.editableScreenType != null && props.screenTypes.includes(props.editableScreenType)
+))
 
 function imageUrl(assetPath: string): string {
   return resolveInvitationImageUrl(assetPath, config.app.baseURL)
@@ -34,8 +48,14 @@ function imageUrl(assetPath: string): string {
     </header>
 
     <p class="builder-image-library__description">
-      Все изображения хранятся внутри проекта, не загружаются со сторонних сайтов и уже имеют
-      доступное текстовое описание. Выбор конкретной карточки подключим в редакторе экранов.
+      <template v-if="hasSelectableGroup">
+        Выбери иллюстрацию первого экрана. Розовая рамка показывает вариант, который будет сохранён
+        и показан получателю.
+      </template>
+      <template v-else>
+        Все изображения хранятся внутри проекта, не загружаются со сторонних сайтов и уже имеют
+        доступное текстовое описание.
+      </template>
     </p>
 
     <section
@@ -50,31 +70,23 @@ function imageUrl(assetPath: string): string {
           <h4 :id="`builder-image-group-${group.screenType}`">
             {{ group.presentation.label }}
           </h4>
-          <p>{{ group.presentation.description }}</p>
+          <p>
+            {{ group.presentation.description }}
+            <strong v-if="group.screenType === editableScreenType"> Выбери один вариант.</strong>
+          </p>
         </div>
       </div>
 
       <div class="builder-image-library__grid">
-        <figure
+        <BuilderImageOption
           v-for="image in group.images"
           :key="image.key"
-          class="builder-image-library__card"
-        >
-          <div class="builder-image-library__media">
-            <img
-              :src="imageUrl(image.assetPath)"
-              :alt="image.altText"
-              width="640"
-              height="420"
-              loading="lazy"
-              decoding="async"
-            >
-          </div>
-          <figcaption>
-            <strong>{{ image.label }}</strong>
-            <span>{{ image.description }}</span>
-          </figcaption>
-        </figure>
+          :image="image"
+          :image-url="imageUrl(image.assetPath)"
+          :selectable="group.screenType === editableScreenType"
+          :selected="image.key === selectedImageKey"
+          @select="emit('selectImage', $event)"
+        />
       </div>
     </section>
   </section>

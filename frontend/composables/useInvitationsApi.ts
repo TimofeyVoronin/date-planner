@@ -8,8 +8,11 @@ import type {
   PlanOptionsPayload,
   PlanSelectionPayload,
 } from '../types/invitation'
-import type { InvitationScreenRecord } from '../types/screen'
-import { normalizeInvitationScreens } from '../utils/screens'
+import type {
+  InvitationScreenRecord,
+  InvitationScreenUpdatePayload,
+} from '../types/screen'
+import { normalizeInvitationScreen, normalizeInvitationScreens } from '../utils/screens'
 
 export function useInvitationsApi() {
   const config = useRuntimeConfig()
@@ -74,6 +77,26 @@ export function useInvitationsApi() {
     )
 
     return normalizeInvitationScreens(payload)
+  }
+
+  async function updateInvitationScreen(
+    id: string,
+    token: string,
+    payload: InvitationScreenUpdatePayload,
+  ): Promise<InvitationScreenRecord> {
+    const response = await $fetch<unknown>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/screens/invitation/`,
+      {
+        baseURL,
+        method: 'PATCH',
+        body: payload,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+
+    return normalizeInvitationScreen(response)
   }
 
   function publishInvitation(id: string, token: string): Promise<InvitationRecord> {
@@ -163,6 +186,7 @@ export function useInvitationsApi() {
     savePlanOptions,
     savePlanSelection,
     saveInvitationResponse,
+    updateInvitationScreen,
     updateManagedInvitation,
   }
 }

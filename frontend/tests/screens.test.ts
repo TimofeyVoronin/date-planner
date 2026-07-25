@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { InvitationScreenRecord } from '../types/screen'
 import {
+  buildInvitationScreenUpdatePayload,
+  createInvitationScreenEditForm,
+  getInvitationScreenByType,
   getInvitationScreenPresentation,
   getInvitationScreensForBuilderStep,
   isInvitationScreenType,
+  normalizeInvitationScreen,
   normalizeInvitationScreens,
+  parseInvitationScreenApiError,
   sortInvitationScreens,
+  validateInvitationScreenEditForm,
 } from '../utils/screens'
 
 const screens: InvitationScreenRecord[] = [
@@ -14,6 +20,7 @@ const screens: InvitationScreenRecord[] = [
     title: 'Ты пойдёшь со мной на свидание?',
     subtitle: 'Особенное приглашение',
     button_text: 'Да!',
+    secondary_button_text: 'Нет',
     image_key: 'invitation-default',
   },
   {
@@ -21,6 +28,7 @@ const screens: InvitationScreenRecord[] = [
     title: 'Ура!',
     subtitle: 'Выберем дату',
     button_text: 'Выбрать дату',
+    secondary_button_text: '',
     image_key: 'acceptance-default',
   },
   {
@@ -28,6 +36,7 @@ const screens: InvitationScreenRecord[] = [
     title: 'Когда тебе удобно?',
     subtitle: 'Выбери дату',
     button_text: 'Продолжить',
+    secondary_button_text: '',
     image_key: 'date-selection-default',
   },
   {
@@ -35,6 +44,7 @@ const screens: InvitationScreenRecord[] = [
     title: 'Чем займёмся?',
     subtitle: 'Выбери активность',
     button_text: 'Продолжить',
+    secondary_button_text: '',
     image_key: 'activity-selection-default',
   },
   {
@@ -42,6 +52,7 @@ const screens: InvitationScreenRecord[] = [
     title: 'Договорились',
     subtitle: 'Итоговый план',
     button_text: 'Посмотреть план',
+    secondary_button_text: '',
     image_key: 'final-default',
   },
 ]
@@ -118,6 +129,50 @@ describe('invitation screen configuration', () => {
     expect(getInvitationScreenPresentation('final')).toMatchObject({
       label: 'Финальный экран',
       icon: '💞',
+    })
+  })
+
+  it('builds a minimal normalized PATCH for the primary screen', () => {
+    const screen = screens[0]!
+    const form = createInvitationScreenEditForm(screen)
+
+    form.title = '  Новый вопрос  '
+    form.image_key = 'invitation-moon'
+
+    expect(buildInvitationScreenUpdatePayload(form, screen)).toEqual({
+      title: 'Новый вопрос',
+      image_key: 'invitation-moon',
+    })
+    expect(getInvitationScreenByType(screens, 'invitation')).toEqual(screen)
+    expect(getInvitationScreenByType(screens, 'final')?.screen_type).toBe('final')
+  })
+
+  it('validates required actions, limits, and compatible image choice', () => {
+    const screen = screens[0]!
+
+    expect(validateInvitationScreenEditForm({
+      ...createInvitationScreenEditForm(screen),
+      title: '   ',
+      button_text: '',
+      secondary_button_text: '',
+      image_key: 'final-default',
+    })).toMatchObject({
+      title: expect.any(String),
+      button_text: expect.any(String),
+      secondary_button_text: expect.any(String),
+      image_key: expect.any(String),
+    })
+  })
+
+  it('normalizes one PATCH response and parses field errors', () => {
+    expect(normalizeInvitationScreen(screens[0])).toEqual(screens[0])
+    expect(parseInvitationScreenApiError({
+      statusCode: 400,
+      data: { title: ['Обязательное поле.'] },
+    })).toMatchObject({
+      status: 400,
+      message: 'Проверь заполненные поля экрана.',
+      fieldErrors: { title: 'Обязательное поле.' },
     })
   })
 })
