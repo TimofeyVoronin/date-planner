@@ -1,5 +1,6 @@
 """Serializers for common API responses."""
 
+from collections.abc import Mapping
 from datetime import datetime
 from uuid import UUID
 
@@ -12,7 +13,10 @@ from apps.common.models import (
     INVITATION_ANSWER_STATUS_CHOICES,
     Invitation,
     InvitationPlanOption,
+    InvitationScreen,
 )
+from apps.common.screen_images import is_invitation_screen_image_compatible
+from apps.common.screens import order_invitation_screens
 
 
 class HealthResponseSerializer(serializers.Serializer):
@@ -20,6 +24,119 @@ class HealthResponseSerializer(serializers.Serializer):
 
     status = serializers.CharField(read_only=True)
     service = serializers.CharField(read_only=True)
+
+
+class InvitationScreenSerializer(serializers.ModelSerializer):
+    """Expose only the configurable fields required by the author builder."""
+
+    class Meta:
+        """Keep database identifiers and timestamps internal to the service."""
+
+        model = InvitationScreen
+        fields = (
+            "screen_type",
+            "title",
+            "subtitle",
+            "button_text",
+            "secondary_button_text",
+            "image_key",
+        )
+        read_only_fields = fields
+
+
+class InvitationScreenUpdateSerializer(serializers.ModelSerializer):
+    """Validate editable fields shared by configurable invitation screens."""
+
+    editable_fields = (
+        "title",
+        "subtitle",
+        "button_text",
+        "image_key",
+    )
+
+    class Meta:
+        """Keep lifecycle, ownership, and screen type server-controlled."""
+
+        model = InvitationScreen
+        fields = (
+            "title",
+            "subtitle",
+            "button_text",
+            "image_key",
+        )
+        extra_kwargs = {
+            "title": {"min_length": 1, "trim_whitespace": True},
+            "subtitle": {"allow_blank": True, "trim_whitespace": True},
+            "button_text": {"min_length": 1, "allow_blank": False, "trim_whitespace": True},
+            "image_key": {"min_length": 1, "allow_blank": False, "trim_whitespace": True},
+        }
+
+    def to_internal_value(self, data: object) -> dict[str, object]:
+        """Reject unknown and server-controlled fields instead of ignoring them."""
+        if isinstance(data, Mapping):
+            unsupported_fields = sorted(set(data) - set(self.editable_fields))
+            if unsupported_fields:
+                raise serializers.ValidationError(
+                    {
+                        field: ["This field cannot be edited through this endpoint."]
+                        for field in unsupported_fields
+                    }
+                )
+        return super().to_internal_value(data)
+
+    def validate_image_key(self, image_key: str) -> str:
+        """Accept only built-in image keys assigned to the current screen."""
+        screen = self.instance
+        if not isinstance(screen, InvitationScreen):
+            raise RuntimeError("Screen updates require an InvitationScreen instance.")
+        if not is_invitation_screen_image_compatible(screen.screen_type, image_key):
+            raise serializers.ValidationError(
+                "Choose a built-in image that belongs to this invitation screen."
+            )
+        return image_key
+
+    def update(
+        self,
+        screen: InvitationScreen,
+        validated_data: dict[str, object],
+    ) -> InvitationScreen:
+        """Persist only actual changes so exact PATCH retries remain idempotent."""
+        changed_fields: list[str] = []
+        for field, value in validated_data.items():
+            if getattr(screen, field) == value:
+                continue
+            setattr(screen, field, value)
+            changed_fields.append(field)
+
+        if changed_fields:
+            screen.save(update_fields=(*changed_fields, "updated_at"))
+
+        return screen
+
+
+class InvitationPrimaryScreenUpdateSerializer(InvitationScreenUpdateSerializer):
+    """Validate the extra decline-button field of the primary screen."""
+
+    editable_fields = (
+        *InvitationScreenUpdateSerializer.editable_fields,
+        "secondary_button_text",
+    )
+
+    class Meta(InvitationScreenUpdateSerializer.Meta):
+        """Extend the shared screen fields with the decline action."""
+
+        fields = (
+            *InvitationScreenUpdateSerializer.Meta.fields,
+            "secondary_button_text",
+        )
+        extra_kwargs = {
+            **InvitationScreenUpdateSerializer.Meta.extra_kwargs,
+            "secondary_button_text": {
+                "min_length": 1,
+                "allow_blank": False,
+                "trim_whitespace": True,
+            },
+        }
 
 
 class InvitationPlanOptionSerializer(serializers.ModelSerializer):
@@ -37,6 +154,9 @@ class InvitationSerializer(serializers.ModelSerializer):
     """Validate invitation input and expose its public representation."""
 
     plan_options = InvitationPlanOptionSerializer(many=True, read_only=True)
+    screens = serializers.SerializerMethodField(
+        help_text="Recipient-facing screen configuration in stable flow order."
+    )
     selected_option_id = serializers.UUIDField(read_only=True, allow_null=True)
     selected_at = serializers.DateTimeField(read_only=True, allow_null=True)
     confirmed_at = serializers.DateTimeField(read_only=True, allow_null=True)
@@ -53,8 +173,12 @@ class InvitationSerializer(serializers.ModelSerializer):
             "author_name",
             "recipient_name",
             "message",
+            "creation_mode",
+            "publication_status",
+            "published_at",
             "response_status",
             "responded_at",
+            "screens",
             "plan_options",
             "selected_option_id",
             "selected_at",
@@ -65,8 +189,11 @@ class InvitationSerializer(serializers.ModelSerializer):
         )
         read_only_fields = (
             "id",
+            "publication_status",
+            "published_at",
             "response_status",
             "responded_at",
+            "screens",
             "plan_options",
             "selected_option_id",
             "selected_at",
@@ -83,12 +210,95 @@ class InvitationSerializer(serializers.ModelSerializer):
                 "allow_blank": True,
                 "trim_whitespace": True,
             },
+            "creation_mode": {
+                "required": False,
+                "help_text": (
+                    "The authoring flow: quick creates the current compact invitation, "
+                    "while extended reserves the invitation for the guided builder."
+                ),
+            },
         }
+
+    @extend_schema_field(InvitationScreenSerializer(many=True))
+    def get_screens(self, invitation: Invitation) -> list[dict[str, object]]:
+        """Expose complete extended-screen configuration without internal identifiers."""
+        if invitation.creation_mode != Invitation.CreationMode.EXTENDED:
+            return []
+
+        screens = order_invitation_screens(invitation.screens.all())
+        return InvitationScreenSerializer(screens, many=True).data
 
     @extend_schema_field(serializers.DateTimeField())
     def get_server_now(self, invitation: Invitation) -> datetime:
         """Return a non-persisted server-clock snapshot for client expiry decisions."""
         return now()
+
+
+class InvitationManagementUpdateSerializer(serializers.ModelSerializer):
+    """Validate the small set of fields an author may edit through a capability."""
+
+    editable_fields = (
+        "author_name",
+        "recipient_name",
+        "message",
+        "creation_mode",
+    )
+
+    class Meta:
+        """Expose only fields that are safe to update after creation."""
+
+        model = Invitation
+        fields = (
+            "author_name",
+            "recipient_name",
+            "message",
+            "creation_mode",
+        )
+        extra_kwargs = {
+            "author_name": {"min_length": 1, "trim_whitespace": True},
+            "recipient_name": {"min_length": 1, "trim_whitespace": True},
+            "message": {
+                "required": False,
+                "allow_blank": True,
+                "trim_whitespace": True,
+            },
+            "creation_mode": {"required": False},
+        }
+
+    def to_internal_value(self, data: object) -> dict[str, object]:
+        """Reject unknown and lifecycle fields instead of silently ignoring them."""
+        if isinstance(data, Mapping):
+            unsupported_fields = sorted(set(data) - set(self.editable_fields))
+            if unsupported_fields:
+                raise serializers.ValidationError(
+                    {
+                        field: ["This field cannot be edited through this endpoint."]
+                        for field in unsupported_fields
+                    }
+                )
+        return super().to_internal_value(data)
+
+    def update(
+        self,
+        invitation: Invitation,
+        validated_data: dict[str, object],
+    ) -> Invitation:
+        """Persist only actual changes so exact retries keep ``updated_at`` stable."""
+        changed_fields: list[str] = []
+        for field, value in validated_data.items():
+            if getattr(invitation, field) == value:
+                continue
+            setattr(invitation, field, value)
+            changed_fields.append(field)
+
+        if changed_fields:
+            invitation.save(update_fields=(*changed_fields, "updated_at"))
+
+        if invitation.creation_mode == Invitation.CreationMode.EXTENDED:
+            from apps.common.screens import ensure_default_invitation_screens
+
+            ensure_default_invitation_screens(invitation)
+        return invitation
 
 
 class InvitationResponseUpdateSerializer(serializers.Serializer):

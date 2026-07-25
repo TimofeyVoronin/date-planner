@@ -4,6 +4,12 @@ from django.urls import path
 
 from apps.common.confirmation_views import InvitationConfirmationView
 from apps.common.planning_views import InvitationPlanOptionsView, InvitationSelectionView
+from apps.common.publication_views import InvitationPublicationView
+from apps.common.screen_views import (
+    InvitationAcceptanceScreenUpdateView,
+    InvitationPrimaryScreenUpdateView,
+    InvitationScreenListView,
+)
 from apps.common.views import (
     InvitationCreateView,
     InvitationDetailView,
@@ -26,6 +32,26 @@ urlpatterns = [
         "invitations/<uuid:pk>/manage/",
         InvitationManagementDetailView.as_view(),
         name="invitation-management-detail",
+    ),
+    path(
+        "invitations/<uuid:pk>/screens/",
+        InvitationScreenListView.as_view(),
+        name="invitation-screen-list",
+    ),
+    path(
+        "invitations/<uuid:pk>/screens/invitation/",
+        InvitationPrimaryScreenUpdateView.as_view(),
+        name="invitation-primary-screen-update",
+    ),
+    path(
+        "invitations/<uuid:pk>/screens/acceptance/",
+        InvitationAcceptanceScreenUpdateView.as_view(),
+        name="invitation-acceptance-screen-update",
+    ),
+    path(
+        "invitations/<uuid:pk>/publish/",
+        InvitationPublicationView.as_view(),
+        name="invitation-publish",
     ),
     path(
         "invitations/<uuid:pk>/response/",

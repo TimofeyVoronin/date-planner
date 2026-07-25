@@ -1,18 +1,26 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { InvitationCreatePayload } from '../types/invitation'
+import type { InvitationCreatePayload, InvitationRecord } from '../types/invitation'
 import {
+  buildInvitationUpdatePayload,
   buildManagementInvitationUrl,
   buildPublicInvitationUrl,
+  createInvitationEditForm,
   hasInvitationValidationErrors,
+  getInvitationCreationModePresentation,
+  getInvitationPublicationPresentation,
   getInvitationResponsePresentation,
+  isInvitationCreationMode,
+  isInvitationPublicationStatus,
   isInvitationId,
   isFinalInvitationResponseStatus,
   isInvitationResponseStatus,
   isManagementToken,
+  invitationEditFormHasChanges,
   invitationStatusToAnswer,
   managementTokenSessionKey,
   normalizeInvitationPayload,
   parseInvitationApiError,
+  shouldClearInvitationEditFeedback,
   parseInvitationResponseApiError,
   readManagementToken,
   refreshInvitationResponseAfterConflict,
@@ -23,6 +31,24 @@ const validPayload: InvitationCreatePayload = {
   author_name: 'Алиса',
   recipient_name: 'Борис',
   message: 'Давай сходим на свидание?',
+  creation_mode: 'quick',
+}
+
+const invitationRecord: InvitationRecord = {
+  ...validPayload,
+  id: 'd9428888-122b-11e1-b85c-61cd3cbb3210',
+  server_now: '2030-01-01T10:00:00Z',
+  publication_status: 'published',
+  published_at: '2030-01-01T09:00:00Z',
+  response_status: 'pending',
+  responded_at: null,
+  screens: [],
+  plan_options: [],
+  selected_option_id: null,
+  selected_at: null,
+  confirmed_at: null,
+  created_at: '2030-01-01T09:00:00Z',
+  updated_at: '2030-01-01T09:00:00Z',
 }
 
 describe('invitation form helpers', () => {
@@ -31,12 +57,14 @@ describe('invitation form helpers', () => {
       author_name: '  Алиса ',
       recipient_name: ' Борис  ',
       message: '  Увидимся вечером?\n ',
+      creation_mode: 'extended' as const,
     }
 
     expect(normalizeInvitationPayload(draft)).toEqual({
       author_name: 'Алиса',
       recipient_name: 'Борис',
       message: 'Увидимся вечером?',
+      creation_mode: 'extended',
     })
     expect(draft.author_name).toBe('  Алиса ')
   })
@@ -53,6 +81,7 @@ describe('invitation form helpers', () => {
       author_name: ' ',
       recipient_name: '\n',
       message: '   ',
+      creation_mode: 'quick',
     })
 
     expect(errors.author_name).toBeTruthy()
@@ -66,6 +95,7 @@ describe('invitation form helpers', () => {
       author_name: 'A'.repeat(101),
       recipient_name: 'R'.repeat(101),
       message: 'M'.repeat(1001),
+      creation_mode: 'quick',
     })
 
     expect(errors.author_name).toContain('100')
@@ -78,7 +108,88 @@ describe('invitation form helpers', () => {
       author_name: 'A'.repeat(100),
       recipient_name: 'R'.repeat(100),
       message: 'M'.repeat(1000),
+      creation_mode: 'extended',
     })).toEqual({})
+  })
+
+  it('recognizes and presents both creation modes', () => {
+    expect(isInvitationCreationMode('quick')).toBe(true)
+    expect(isInvitationCreationMode('extended')).toBe(true)
+    expect(isInvitationCreationMode('wizard')).toBe(false)
+    expect(isInvitationCreationMode(null)).toBe(false)
+
+    expect(getInvitationCreationModePresentation('quick')).toMatchObject({
+      label: 'Быстрое приглашение',
+      submitLabel: 'Создать приглашение',
+    })
+    expect(getInvitationCreationModePresentation('extended')).toMatchObject({
+      label: 'Расширенное приглашение',
+      submitLabel: 'Создать основу приглашения',
+    })
+  })
+
+  it('reports a missing runtime creation mode before sending the payload', () => {
+    const malformedPayload = {
+      ...validPayload,
+      creation_mode: 'wizard',
+    } as unknown as InvitationCreatePayload
+
+    const errors = validateInvitationPayload(malformedPayload)
+
+    expect(errors.creation_mode).toContain('режим')
+    expect(hasInvitationValidationErrors(errors)).toBe(true)
+  })
+})
+
+describe('invitation management editing', () => {
+  it('creates a detached edit form from the managed invitation', () => {
+    const form = createInvitationEditForm(invitationRecord)
+
+    expect(form).toEqual(validPayload)
+    form.author_name = 'Изменённое локально'
+    expect(invitationRecord.author_name).toBe('Алиса')
+  })
+
+  it('detects normalized changes and builds a minimal PATCH payload', () => {
+    const form = createInvitationEditForm(invitationRecord)
+
+    form.author_name = '  Анна  '
+    form.message = 'Давай сходим на свидание?   '
+
+    expect(invitationEditFormHasChanges(form, invitationRecord)).toBe(true)
+    expect(buildInvitationUpdatePayload(form, invitationRecord)).toEqual({
+      author_name: 'Анна',
+    })
+  })
+
+  it('treats whitespace-only retries as unchanged', () => {
+    const form = {
+      ...createInvitationEditForm(invitationRecord),
+      author_name: ' Алиса ',
+      recipient_name: 'Борис  ',
+      message: '  Давай сходим на свидание? ',
+    }
+
+    expect(invitationEditFormHasChanges(form, invitationRecord)).toBe(false)
+    expect(buildInvitationUpdatePayload(form, invitationRecord)).toEqual({})
+  })
+
+  it('includes every changed editable field and nothing else', () => {
+    const form: InvitationCreatePayload = {
+      author_name: 'Виктор',
+      recipient_name: 'Галина',
+      message: 'Пойдём в театр?',
+      creation_mode: 'extended',
+    }
+
+    expect(buildInvitationUpdatePayload(form, invitationRecord)).toEqual(form)
+  })
+
+  it('keeps success feedback until a new edit starts', () => {
+    expect(shouldClearInvitationEditFeedback('success', false)).toBe(false)
+    expect(shouldClearInvitationEditFeedback('success', true)).toBe(true)
+    expect(shouldClearInvitationEditFeedback('error', false)).toBe(true)
+    expect(shouldClearInvitationEditFeedback('saving', true)).toBe(false)
   })
 })
 
@@ -128,6 +239,7 @@ describe('API error presentation', () => {
       response: {
         status: 400,
         _data: {
+          creation_mode: ['Недопустимый режим создания.'],
           author_name: ['Это поле обязательно.'],
           message: ['Убедитесь, что это значение содержит не более 1000 символов.'],
         },
@@ -136,6 +248,7 @@ describe('API error presentation', () => {
 
     expect(parsed.message).toBe('Проверь заполненные поля.')
     expect(parsed.fieldErrors).toEqual({
+      creation_mode: 'Недопустимый режим создания.',
       author_name: 'Это поле обязательно.',
       message: 'Убедитесь, что это значение содержит не более 1000 символов.',
     })
@@ -147,6 +260,26 @@ describe('API error presentation', () => {
     expect(parseInvitationApiError({ response: { status: 403 } }).message).toContain(
       'Секретная ссылка',
     )
+  })
+})
+
+describe('invitation publication lifecycle', () => {
+  it('recognizes only draft and published states', () => {
+    expect(isInvitationPublicationStatus('draft')).toBe(true)
+    expect(isInvitationPublicationStatus('published')).toBe(true)
+    expect(isInvitationPublicationStatus('private')).toBe(false)
+    expect(isInvitationPublicationStatus(null)).toBe(false)
+  })
+
+  it('explains whether the recipient can open the invitation', () => {
+    expect(getInvitationPublicationPresentation('draft')).toMatchObject({
+      label: 'Черновик',
+      tone: 'draft',
+    })
+    expect(getInvitationPublicationPresentation('published')).toMatchObject({
+      label: 'Опубликовано',
+      tone: 'published',
+    })
   })
 })
 

@@ -1,10 +1,17 @@
 import {
+  INVITATION_CREATION_MODES,
   INVITATION_MESSAGE_MAX_LENGTH,
   INVITATION_NAME_MAX_LENGTH,
+  INVITATION_PUBLICATION_STATUSES,
   type InvitationCreatePayload,
+  type InvitationCreationMode,
+  type InvitationEditSaveState,
   type InvitationField,
+  type InvitationPublicationStatus,
   type FinalInvitationResponseStatus,
+  type InvitationRecord,
   type InvitationResponseStatus,
+  type InvitationUpdatePayload,
   type InvitationValidationErrors,
 } from '../types/invitation'
 
@@ -13,6 +20,20 @@ export type InvitationApiError = {
   fieldErrors: InvitationValidationErrors
   message: string
   status: number | null
+}
+
+export type InvitationCreationModePresentation = {
+  description: string
+  icon: string
+  label: string
+  submitLabel: string
+}
+
+export type InvitationPublicationPresentation = {
+  description: string
+  icon: string
+  label: string
+  tone: 'draft' | 'published'
 }
 
 export type InvitationResponsePresentation = {
@@ -24,7 +45,12 @@ export type InvitationResponsePresentation = {
 
 type UnknownRecord = Record<string, unknown>
 
-const INVITATION_FIELDS: InvitationField[] = ['author_name', 'recipient_name', 'message']
+const INVITATION_FIELDS: InvitationField[] = [
+  'creation_mode',
+  'author_name',
+  'recipient_name',
+  'message',
+]
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -87,6 +113,7 @@ export function normalizeInvitationPayload(
     author_name: payload.author_name.trim(),
     recipient_name: payload.recipient_name.trim(),
     message: payload.message.trim(),
+    creation_mode: payload.creation_mode,
   }
 }
 
@@ -95,6 +122,10 @@ export function validateInvitationPayload(
 ): InvitationValidationErrors {
   const normalized = normalizeInvitationPayload(payload)
   const errors: InvitationValidationErrors = {}
+
+  if (!isInvitationCreationMode(normalized.creation_mode)) {
+    errors.creation_mode = 'Выбери быстрый или расширенный режим.'
+  }
 
   if (!normalized.author_name) {
     errors.author_name = 'Напиши, от кого приглашение.'
@@ -119,6 +150,52 @@ export function validateInvitationPayload(
 
 export function hasInvitationValidationErrors(errors: InvitationValidationErrors): boolean {
   return INVITATION_FIELDS.some(field => Boolean(errors[field]))
+}
+
+export function createInvitationEditForm(invitation: InvitationRecord): InvitationCreatePayload {
+  return {
+    author_name: invitation.author_name,
+    recipient_name: invitation.recipient_name,
+    message: invitation.message,
+    creation_mode: invitation.creation_mode,
+  }
+}
+
+export function buildInvitationUpdatePayload(
+  form: InvitationCreatePayload,
+  invitation: InvitationRecord,
+): InvitationUpdatePayload {
+  const normalized = normalizeInvitationPayload(form)
+  const payload: InvitationUpdatePayload = {}
+
+  if (normalized.author_name !== invitation.author_name) {
+    payload.author_name = normalized.author_name
+  }
+  if (normalized.recipient_name !== invitation.recipient_name) {
+    payload.recipient_name = normalized.recipient_name
+  }
+  if (normalized.message !== invitation.message) {
+    payload.message = normalized.message
+  }
+  if (normalized.creation_mode !== invitation.creation_mode) {
+    payload.creation_mode = normalized.creation_mode
+  }
+
+  return payload
+}
+
+export function invitationEditFormHasChanges(
+  form: InvitationCreatePayload,
+  invitation: InvitationRecord,
+): boolean {
+  return Object.keys(buildInvitationUpdatePayload(form, invitation)).length > 0
+}
+
+export function shouldClearInvitationEditFeedback(
+  saveState: InvitationEditSaveState,
+  isDirty: boolean,
+): boolean {
+  return saveState !== 'saving' && (isDirty || saveState === 'error')
 }
 
 export function buildPublicInvitationUrl(origin: string, id: string): string {
@@ -152,6 +229,56 @@ export function managementTokenSessionKey(id: string): string {
 
 export function isInvitationId(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
+export function isInvitationCreationMode(value: unknown): value is InvitationCreationMode {
+  return INVITATION_CREATION_MODES.some(mode => mode === value)
+}
+
+export function getInvitationCreationModePresentation(
+  mode: InvitationCreationMode,
+): InvitationCreationModePresentation {
+  if (mode === 'extended') {
+    return {
+      icon: '✨',
+      label: 'Расширенное приглашение',
+      description: 'Основа для пошаговой настройки экранов, дат и активностей.',
+      submitLabel: 'Создать основу приглашения',
+    }
+  }
+
+  return {
+    icon: '⚡',
+    label: 'Быстрое приглашение',
+    description: 'Сразу получи ссылку, а дату и место согласуйте после ответа.',
+    submitLabel: 'Создать приглашение',
+  }
+}
+
+export function isInvitationPublicationStatus(
+  value: unknown,
+): value is InvitationPublicationStatus {
+  return INVITATION_PUBLICATION_STATUSES.some(status => status === value)
+}
+
+export function getInvitationPublicationPresentation(
+  status: InvitationPublicationStatus,
+): InvitationPublicationPresentation {
+  if (status === 'draft') {
+    return {
+      tone: 'draft',
+      icon: '📝',
+      label: 'Черновик',
+      description: 'Публичная ссылка пока закрыта. Опубликуй приглашение, когда оно будет готово.',
+    }
+  }
+
+  return {
+    tone: 'published',
+    icon: '💌',
+    label: 'Опубликовано',
+    description: 'Публичная ссылка доступна получателю.',
+  }
 }
 
 export function isInvitationResponseStatus(value: unknown): value is InvitationResponseStatus {

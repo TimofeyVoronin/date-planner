@@ -3,10 +3,16 @@ import type {
   InvitationCreateResponse,
   InvitationRecord,
   InvitationResponsePayload,
+  InvitationUpdatePayload,
   PlanConfirmationPayload,
   PlanOptionsPayload,
   PlanSelectionPayload,
 } from '../types/invitation'
+import type {
+  InvitationScreenRecord,
+  InvitationScreenUpdatePayload,
+} from '../types/screen'
+import { normalizeInvitationScreen, normalizeInvitationScreens } from '../utils/screens'
 
 export function useInvitationsApi() {
   const config = useRuntimeConfig()
@@ -31,6 +37,75 @@ export function useInvitationsApi() {
       `/api/v1/invitations/${encodeURIComponent(id)}/manage/`,
       {
         baseURL,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+  }
+
+  function updateManagedInvitation(
+    id: string,
+    token: string,
+    payload: InvitationUpdatePayload,
+  ): Promise<InvitationRecord> {
+    return $fetch<InvitationRecord>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/manage/`,
+      {
+        baseURL,
+        method: 'PATCH',
+        body: payload,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+  }
+
+  async function getInvitationScreens(
+    id: string,
+    token: string,
+  ): Promise<InvitationScreenRecord[]> {
+    const payload = await $fetch<unknown>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/screens/`,
+      {
+        baseURL,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+
+    return normalizeInvitationScreens(payload)
+  }
+
+  async function updateInvitationScreen(
+    id: string,
+    token: string,
+    screenType: 'acceptance' | 'invitation',
+    payload: InvitationScreenUpdatePayload,
+  ): Promise<InvitationScreenRecord> {
+    const response = await $fetch<unknown>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/screens/${screenType}/`,
+      {
+        baseURL,
+        method: 'PATCH',
+        body: payload,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+
+    return normalizeInvitationScreen(response)
+  }
+
+  function publishInvitation(id: string, token: string): Promise<InvitationRecord> {
+    return $fetch<InvitationRecord>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/publish/`,
+      {
+        baseURL,
+        method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -105,10 +180,14 @@ export function useInvitationsApi() {
   return {
     confirmPlan,
     createInvitation,
+    getInvitationScreens,
     getManagedInvitation,
     getPublicInvitation,
+    publishInvitation,
     savePlanOptions,
     savePlanSelection,
     saveInvitationResponse,
+    updateInvitationScreen,
+    updateManagedInvitation,
   }
 }

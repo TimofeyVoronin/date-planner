@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import InvitationPreviewCard from '../../../components/invitation/InvitationPreviewCard.vue'
 import FinalPlanCard from '../../../components/planning/FinalPlanCard.vue'
 import PlanOptionSelector from '../../../components/planning/PlanOptionSelector.vue'
@@ -16,6 +16,7 @@ import {
   parseInvitationResponseApiError,
   refreshInvitationResponseAfterConflict,
 } from '../../../utils/invitations'
+import { getInvitationScreenByType } from '../../../utils/screens'
 import {
   findSelectedPlanOption,
   findUsableSelectedPlanOption,
@@ -50,6 +51,13 @@ const selectedPlanOption = computed(() => findSelectedPlanOption(
   invitation.value?.plan_options ?? [],
   invitation.value?.selected_option_id ?? null,
 ))
+const invitationScreen = computed(() => (
+  getInvitationScreenByType(invitation.value?.screens ?? [], 'invitation')
+))
+const acceptanceScreen = computed(() => (
+  getInvitationScreenByType(invitation.value?.screens ?? [], 'acceptance')
+))
+const planningSectionRef = ref<HTMLElement | null>(null)
 
 useHead({
   title: 'Личное приглашение — Date Planner',
@@ -263,6 +271,22 @@ function retryResponseSave(): void {
   }
 }
 
+function continueToPlanning(): void {
+  void nextTick(() => {
+    const target = planningSectionRef.value
+    if (!target) {
+      return
+    }
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    target.scrollIntoView({
+      behavior: reducedMotion ? 'auto' : 'smooth',
+      block: 'start',
+    })
+    target.focus({ preventScroll: true })
+  })
+}
+
 onMounted(loadInvitation)
 </script>
 
@@ -303,85 +327,94 @@ onMounted(loadInvitation)
           <h1 id="invite-page-title">{{ invitation.recipient_name }}, это для тебя</h1>
         </header>
         <InvitationPreviewCard
+          :acceptance-screen="acceptanceScreen"
           :allow-reset="false"
           :author-name="invitation.author_name"
           :initial-status="invitation.response_status"
           :message="invitation.message"
           :planning-context="true"
           :recipient-name="invitation.recipient_name"
+          :screen="invitationScreen"
           @answered="saveResponse"
+          @continue="continueToPlanning"
         />
         <div
-          v-if="responseSaveState !== 'idle'"
-          class="response-save-status"
-          :class="`response-save-status--${responseSaveState}`"
-          :role="responseSaveState === 'error' ? 'alert' : 'status'"
-          aria-live="polite"
+          ref="planningSectionRef"
+          class="public-invitation-followup"
+          tabindex="-1"
         >
-          <span class="response-save-status__icon" aria-hidden="true">
-            {{ responseSaveState === 'saving' ? '⏳' : responseSaveState === 'saved' ? '✓' : '!' }}
-          </span>
-          <div>
-            <strong v-if="responseSaveState === 'saving'">Сохраняем твой ответ…</strong>
-            <strong v-else-if="responseSaveState === 'saved'">
-              {{ savedDuringThisVisit ? 'Ответ сохранён' : 'Ответ уже сохранён' }}
-            </strong>
-            <strong v-else>Не удалось сохранить ответ</strong>
-            <p v-if="responseSaveState === 'saving'">Не закрывай страницу ещё мгновение.</p>
-            <p v-else-if="responseSaveState === 'saved'">
-              Автор приглашения увидит его на своей секретной странице.
-            </p>
-            <p v-else>{{ responseSaveError }}</p>
-          </div>
-          <button
-            v-if="responseSaveState === 'error'"
-            type="button"
-            @click="retryResponseSave"
+          <div
+            v-if="responseSaveState !== 'idle'"
+            class="response-save-status"
+            :class="`response-save-status--${responseSaveState}`"
+            :role="responseSaveState === 'error' ? 'alert' : 'status'"
+            aria-live="polite"
           >
-            Повторить
-          </button>
-        </div>
-
-        <template v-if="invitation.confirmed_at">
-          <FinalPlanCard
-            v-if="selectedPlanOption"
-            :announce="announceFinalPlan"
-            :confirmed-at="invitation.confirmed_at"
-            :option="selectedPlanOption"
-          />
-          <section v-else class="plan-data-error" role="alert">
-            Итоговый план не удалось загрузить. Обнови страницу и попробуй снова.
-          </section>
-        </template>
-
-        <section
-          v-else-if="invitation.response_status === 'accepted'
-            && invitation.plan_options.length === 0"
-          class="plan-waiting"
-          aria-labelledby="plan-waiting-title"
-        >
-          <span aria-hidden="true">🗓️</span>
-          <div>
-            <h2 id="plan-waiting-title">Ждём варианты от автора</h2>
-            <p>Ответ уже сохранён. Здесь появятся даты и места, когда автор их предложит.</p>
+            <span class="response-save-status__icon" aria-hidden="true">
+              {{ responseSaveState === 'saving' ? '⏳' : responseSaveState === 'saved' ? '✓' : '!' }}
+            </span>
+            <div>
+              <strong v-if="responseSaveState === 'saving'">Сохраняем твой ответ…</strong>
+              <strong v-else-if="responseSaveState === 'saved'">
+                {{ savedDuringThisVisit ? 'Ответ сохранён' : 'Ответ уже сохранён' }}
+              </strong>
+              <strong v-else>Не удалось сохранить ответ</strong>
+              <p v-if="responseSaveState === 'saving'">Не закрывай страницу ещё мгновение.</p>
+              <p v-else-if="responseSaveState === 'saved'">
+                Автор приглашения увидит его на своей секретной странице.
+              </p>
+              <p v-else>{{ responseSaveError }}</p>
+            </div>
+            <button
+              v-if="responseSaveState === 'error'"
+              type="button"
+              @click="retryResponseSave"
+            >
+              Повторить
+            </button>
           </div>
-        </section>
 
-        <PlanOptionSelector
-          v-else-if="invitation.response_status === 'accepted'"
-          :current-time="currentTime"
-          :model-value="selectedOptionId"
-          :options="invitation.plan_options"
-          :persisted-option-id="invitation.selected_option_id"
-          :save-error="selectionSaveError"
-          :save-state="selectionSaveState"
-          @save="savePlanSelection"
-          @update:model-value="choosePlanOption"
-        />
-        <p class="detail-shell__privacy">
-          <span aria-hidden="true">🔒</span>
-          Страница доступна только тем, у кого есть ссылка.
-        </p>
+          <template v-if="invitation.confirmed_at">
+            <FinalPlanCard
+              v-if="selectedPlanOption"
+              :announce="announceFinalPlan"
+              :confirmed-at="invitation.confirmed_at"
+              :option="selectedPlanOption"
+            />
+            <section v-else class="plan-data-error" role="alert">
+              Итоговый план не удалось загрузить. Обнови страницу и попробуй снова.
+            </section>
+          </template>
+
+          <section
+            v-else-if="invitation.response_status === 'accepted'
+              && invitation.plan_options.length === 0"
+            class="plan-waiting"
+            aria-labelledby="plan-waiting-title"
+          >
+            <span aria-hidden="true">🗓️</span>
+            <div>
+              <h2 id="plan-waiting-title">Ждём варианты от автора</h2>
+              <p>Ответ уже сохранён. Здесь появятся даты и места, когда автор их предложит.</p>
+            </div>
+          </section>
+
+          <PlanOptionSelector
+            v-else-if="invitation.response_status === 'accepted'"
+            :current-time="currentTime"
+            :model-value="selectedOptionId"
+            :options="invitation.plan_options"
+            :persisted-option-id="invitation.selected_option_id"
+            :save-error="selectionSaveError"
+            :save-state="selectionSaveState"
+            @save="savePlanSelection"
+            @update:model-value="choosePlanOption"
+          />
+          <p class="detail-shell__privacy">
+            <span aria-hidden="true">🔒</span>
+            Страница доступна только тем, у кого есть ссылка.
+          </p>
+        </div>
       </template>
     </section>
   </main>

@@ -1,10 +1,16 @@
+import type { InvitationScreenRecord } from './screen'
+
 export const INVITATION_NAME_MAX_LENGTH = 100
 export const INVITATION_MESSAGE_MAX_LENGTH = 1000
 export const PLAN_OPTION_PLACE_MAX_LENGTH = 200
 export const PLAN_OPTION_COMMENT_MAX_LENGTH = 500
 export const MIN_PLAN_OPTIONS = 2
 export const MAX_PLAN_OPTIONS = 5
+export const INVITATION_CREATION_MODES = ['quick', 'extended'] as const
+export const INVITATION_PUBLICATION_STATUSES = ['draft', 'published'] as const
 
+export type InvitationCreationMode = typeof INVITATION_CREATION_MODES[number]
+export type InvitationPublicationStatus = typeof INVITATION_PUBLICATION_STATUSES[number]
 export type InvitationResponseStatus = 'pending' | 'accepted' | 'declined'
 export type FinalInvitationResponseStatus = Exclude<InvitationResponseStatus, 'pending'>
 
@@ -12,7 +18,12 @@ export type InvitationCreatePayload = {
   author_name: string
   recipient_name: string
   message: string
+  creation_mode: InvitationCreationMode
 }
+
+export type InvitationUpdatePayload = Partial<InvitationCreatePayload>
+
+export type InvitationEditSaveState = 'error' | 'idle' | 'saving' | 'success'
 
 export type InvitationPlanOption = {
   id: string
@@ -44,8 +55,11 @@ export type PlanConfirmationPayload = {
 export type InvitationRecord = InvitationCreatePayload & {
   id: string
   server_now: string
+  publication_status: InvitationPublicationStatus
+  published_at: string | null
   response_status: InvitationResponseStatus
   responded_at: string | null
+  screens: InvitationScreenRecord[]
   plan_options: InvitationPlanOption[]
   selected_option_id: string | null
   selected_at: string | null
