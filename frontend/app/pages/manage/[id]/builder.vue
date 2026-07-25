@@ -5,14 +5,20 @@ import BuilderAcceptanceScreenEditor from '../../../../components/builder/Builde
 import BuilderImageLibrary from '../../../../components/builder/BuilderImageLibrary.vue'
 import BuilderInvitationScreenEditor from '../../../../components/builder/BuilderInvitationScreenEditor.vue'
 import BuilderInvitationStep from '../../../../components/builder/BuilderInvitationStep.vue'
+import BuilderMobilePreview from '../../../../components/builder/BuilderMobilePreview.vue'
 import BuilderScreenConfigSummary from '../../../../components/builder/BuilderScreenConfigSummary.vue'
 import { useBuilderAutosave } from '../../../../composables/useBuilderAutosave'
 import { useInvitationScreenAutosave } from '../../../../composables/useInvitationScreenAutosave'
 import { useInvitationsApi } from '../../../../composables/useInvitationsApi'
 import { useManagementToken } from '../../../../composables/useManagementToken'
+import type { BuilderPreviewScreen } from '../../../../types/builder-preview'
 import type { InvitationRecord } from '../../../../types/invitation'
 import type { InvitationImageKey } from '../../../../types/invitation-image'
-import type { InvitationScreenRecord, InvitationScreenType } from '../../../../types/screen'
+import type {
+  InvitationScreenEditForm,
+  InvitationScreenRecord,
+  InvitationScreenType,
+} from '../../../../types/screen'
 import {
   BUILDER_STEPS,
   builderStepSessionKey,
@@ -31,6 +37,7 @@ import {
   type InvitationApiError,
 } from '../../../../utils/invitations'
 import {
+  createInvitationScreenEditForm,
   getInvitationScreenByType,
   getInvitationScreensForBuilderStep,
 } from '../../../../utils/screens'
@@ -163,6 +170,35 @@ const selectedImageKeys = computed(() => ({
   acceptance: acceptanceScreenAutosave.form.image_key,
 }))
 
+const previewScreens = computed<Record<BuilderPreviewScreen, InvitationScreenEditForm> | null>(() => {
+  const dateScreen = getInvitationScreenByType(screens.value, 'date_selection')
+  const activityScreen = getInvitationScreenByType(screens.value, 'activity_selection')
+  const finalScreen = getInvitationScreenByType(screens.value, 'final')
+
+  if (!dateScreen || !activityScreen || !finalScreen) {
+    return null
+  }
+
+  return {
+    invitation: {
+      title: invitationScreenAutosave.form.title,
+      subtitle: invitationScreenAutosave.form.subtitle,
+      button_text: invitationScreenAutosave.form.button_text,
+      secondary_button_text: invitationScreenAutosave.form.secondary_button_text,
+      image_key: invitationScreenAutosave.form.image_key,
+    },
+    acceptance: {
+      title: acceptanceScreenAutosave.form.title,
+      subtitle: acceptanceScreenAutosave.form.subtitle,
+      button_text: acceptanceScreenAutosave.form.button_text,
+      secondary_button_text: '',
+      image_key: acceptanceScreenAutosave.form.image_key,
+    },
+    date_selection: createInvitationScreenEditForm(dateScreen),
+    activity_selection: createInvitationScreenEditForm(activityScreen),
+    final: createInvitationScreenEditForm(finalScreen),
+  }
+})
 const combinedAutosaveStatus = computed(() => {
   const statuses = [
     autosave.status.value,
@@ -546,75 +582,83 @@ onUnmounted(() => {
             <span>{{ activeStep.description }}</span>
           </div>
 
-          <template v-if="currentStep === 1">
-            <BuilderInvitationStep
-              v-model:author-name="autosave.form.author_name"
-              v-model:recipient-name="autosave.form.recipient_name"
-              v-model:message="autosave.form.message"
-              v-model:creation-mode="autosave.form.creation_mode"
-              :status="autosave.status.value"
-              :error-message="autosave.errorMessage.value"
-              :field-errors="autosave.fieldErrors.value"
-              :is-dirty="autosave.isDirty.value"
-              @retry="autosave.retry()"
-              @save-now="autosave.flush()"
-            />
-            <BuilderInvitationScreenEditor
-              v-if="primaryInvitationScreen"
-              v-model:title="invitationScreenAutosave.form.title"
-              v-model:subtitle="invitationScreenAutosave.form.subtitle"
-              v-model:button-text="invitationScreenAutosave.form.button_text"
-              v-model:secondary-button-text="invitationScreenAutosave.form.secondary_button_text"
-              v-model:image-key="invitationScreenAutosave.form.image_key"
-              :invitation="invitation"
-              :status="invitationScreenAutosave.status.value"
-              :error-message="invitationScreenAutosave.errorMessage.value"
-              :field-errors="invitationScreenAutosave.fieldErrors.value"
-              :is-dirty="invitationScreenAutosave.isDirty.value"
-              @retry="invitationScreenAutosave.retry()"
-              @save-now="invitationScreenAutosave.flush()"
-            />
-            <BuilderAcceptanceScreenEditor
-              v-if="acceptanceInvitationScreen"
-              v-model:title="acceptanceScreenAutosave.form.title"
-              v-model:subtitle="acceptanceScreenAutosave.form.subtitle"
-              v-model:button-text="acceptanceScreenAutosave.form.button_text"
-              v-model:image-key="acceptanceScreenAutosave.form.image_key"
-              :invitation="invitation"
-              :status="acceptanceScreenAutosave.status.value"
-              :error-message="acceptanceScreenAutosave.errorMessage.value"
-              :field-errors="acceptanceScreenAutosave.fieldErrors.value"
-              :is-dirty="acceptanceScreenAutosave.isDirty.value"
-              @retry="acceptanceScreenAutosave.retry()"
-              @save-now="acceptanceScreenAutosave.flush()"
-            />
-            <BuilderScreenConfigSummary v-if="summaryScreens.length" :screens="summaryScreens" />
-          </template>
+          <div class="builder-stage__workspace">
+            <div class="builder-stage__content">
+              <template v-if="currentStep === 1">
+                <BuilderInvitationStep
+                  v-model:author-name="autosave.form.author_name"
+                  v-model:recipient-name="autosave.form.recipient_name"
+                  v-model:message="autosave.form.message"
+                  v-model:creation-mode="autosave.form.creation_mode"
+                  :status="autosave.status.value"
+                  :error-message="autosave.errorMessage.value"
+                  :field-errors="autosave.fieldErrors.value"
+                  :is-dirty="autosave.isDirty.value"
+                  @retry="autosave.retry()"
+                  @save-now="autosave.flush()"
+                />
+                <BuilderInvitationScreenEditor
+                  v-if="primaryInvitationScreen"
+                  v-model:title="invitationScreenAutosave.form.title"
+                  v-model:subtitle="invitationScreenAutosave.form.subtitle"
+                  v-model:button-text="invitationScreenAutosave.form.button_text"
+                  v-model:secondary-button-text="invitationScreenAutosave.form.secondary_button_text"
+                  :status="invitationScreenAutosave.status.value"
+                  :error-message="invitationScreenAutosave.errorMessage.value"
+                  :field-errors="invitationScreenAutosave.fieldErrors.value"
+                  :is-dirty="invitationScreenAutosave.isDirty.value"
+                  @retry="invitationScreenAutosave.retry()"
+                  @save-now="invitationScreenAutosave.flush()"
+                />
+                <BuilderAcceptanceScreenEditor
+                  v-if="acceptanceInvitationScreen"
+                  v-model:title="acceptanceScreenAutosave.form.title"
+                  v-model:subtitle="acceptanceScreenAutosave.form.subtitle"
+                  v-model:button-text="acceptanceScreenAutosave.form.button_text"
+                  :status="acceptanceScreenAutosave.status.value"
+                  :error-message="acceptanceScreenAutosave.errorMessage.value"
+                  :field-errors="acceptanceScreenAutosave.fieldErrors.value"
+                  :is-dirty="acceptanceScreenAutosave.isDirty.value"
+                  @retry="acceptanceScreenAutosave.retry()"
+                  @save-now="acceptanceScreenAutosave.flush()"
+                />
+              </template>
 
-          <section v-else class="builder-stage__placeholder" aria-label="Содержимое будущего шага">
-            <p>Каркас шага готов</p>
-            <h3>Что появится здесь в следующих задачах</h3>
-            <BuilderScreenConfigSummary :screens="summaryScreens" />
-            <ul>
-              <li v-for="feature in activeStep.plannedFeatures" :key="feature">
-                <span aria-hidden="true">✓</span>
-                {{ feature }}
-              </li>
-            </ul>
-            <p class="builder-stage__notice">
-              Конфигурация экрана уже хранится на сервере. Поля редактирования подключим
-              отдельными проверяемыми итерациями.
-            </p>
-          </section>
+              <section v-else class="builder-stage__placeholder" aria-label="Содержимое будущего шага">
+                <p>Каркас шага готов</p>
+                <h3>Что появится здесь в следующих задачах</h3>
+                <BuilderScreenConfigSummary :screens="summaryScreens" />
+                <ul>
+                  <li v-for="feature in activeStep.plannedFeatures" :key="feature">
+                    <span aria-hidden="true">✓</span>
+                    {{ feature }}
+                  </li>
+                </ul>
+                <p class="builder-stage__notice">
+                  Конфигурация экрана уже хранится на сервере. Поля редактирования подключим
+                  отдельными проверяемыми итерациями.
+                </p>
+              </section>
 
-          <BuilderImageLibrary
-            :editable-screen-types="currentStep === 1
-              ? ['invitation', 'acceptance']
-              : []"
-            :screen-types="activeScreenTypes"
-            :selected-image-keys="currentStep === 1 ? selectedImageKeys : {}"
-            @select-image="selectScreenImage"
-          />
+              <BuilderImageLibrary
+                :editable-screen-types="currentStep === 1
+                  ? ['invitation', 'acceptance']
+                  : []"
+                :screen-types="activeScreenTypes"
+                :selected-image-keys="currentStep === 1 ? selectedImageKeys : {}"
+                @select-image="selectScreenImage"
+              />
+            </div>
+
+            <BuilderMobilePreview
+              v-if="previewScreens"
+              :author-name="autosave.form.author_name"
+              :builder-step="currentStep"
+              :message="autosave.form.message"
+              :recipient-name="autosave.form.recipient_name"
+              :screens="previewScreens"
+            />
+          </div>
         </article>
 
         <footer class="builder-actions" aria-label="Навигация по конструктору">

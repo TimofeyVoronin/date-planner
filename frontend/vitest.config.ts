@@ -9,6 +9,7 @@ export default defineConfig({
       include: [
         'utils/**/*.ts',
         'composables/useBuilderAutosave.ts',
+        'composables/useBuilderPreview.ts',
         'composables/useInvitationScreenAutosave.ts',
       ],
       reporter: ['text', 'json-summary', 'html', 'lcov'],
