@@ -45,13 +45,12 @@ class InvitationScreenSerializer(serializers.ModelSerializer):
 
 
 class InvitationScreenUpdateSerializer(serializers.ModelSerializer):
-    """Validate editable fields of the primary invitation screen."""
+    """Validate editable fields shared by configurable invitation screens."""
 
     editable_fields = (
         "title",
         "subtitle",
         "button_text",
-        "secondary_button_text",
         "image_key",
     )
 
@@ -63,18 +62,12 @@ class InvitationScreenUpdateSerializer(serializers.ModelSerializer):
             "title",
             "subtitle",
             "button_text",
-            "secondary_button_text",
             "image_key",
         )
         extra_kwargs = {
             "title": {"min_length": 1, "trim_whitespace": True},
             "subtitle": {"allow_blank": True, "trim_whitespace": True},
             "button_text": {"min_length": 1, "allow_blank": False, "trim_whitespace": True},
-            "secondary_button_text": {
-                "min_length": 1,
-                "allow_blank": False,
-                "trim_whitespace": True,
-            },
             "image_key": {"min_length": 1, "allow_blank": False, "trim_whitespace": True},
         }
 
@@ -92,7 +85,7 @@ class InvitationScreenUpdateSerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
 
     def validate_image_key(self, image_key: str) -> str:
-        """Accept only built-in image keys assigned to the invitation screen."""
+        """Accept only built-in image keys assigned to the current screen."""
         screen = self.instance
         if not isinstance(screen, InvitationScreen):
             raise RuntimeError("Screen updates require an InvitationScreen instance.")
@@ -119,6 +112,31 @@ class InvitationScreenUpdateSerializer(serializers.ModelSerializer):
             screen.save(update_fields=(*changed_fields, "updated_at"))
 
         return screen
+
+
+class InvitationPrimaryScreenUpdateSerializer(InvitationScreenUpdateSerializer):
+    """Validate the extra decline-button field of the primary screen."""
+
+    editable_fields = (
+        *InvitationScreenUpdateSerializer.editable_fields,
+        "secondary_button_text",
+    )
+
+    class Meta(InvitationScreenUpdateSerializer.Meta):
+        """Extend the shared screen fields with the decline action."""
+
+        fields = (
+            *InvitationScreenUpdateSerializer.Meta.fields,
+            "secondary_button_text",
+        )
+        extra_kwargs = {
+            **InvitationScreenUpdateSerializer.Meta.extra_kwargs,
+            "secondary_button_text": {
+                "min_length": 1,
+                "allow_blank": False,
+                "trim_whitespace": True,
+            },
+        }
 
 
 class InvitationPlanOptionSerializer(serializers.ModelSerializer):

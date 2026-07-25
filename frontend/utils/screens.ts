@@ -236,12 +236,15 @@ export function normalizeInvitationScreenEditForm(
 
 export function validateInvitationScreenEditForm(
   form: InvitationScreenEditForm,
+  screenType: InvitationScreenType = 'invitation',
 ): InvitationScreenValidationErrors {
   const normalized = normalizeInvitationScreenEditForm(form)
   const errors: InvitationScreenValidationErrors = {}
 
   if (!normalized.title) {
-    errors.title = 'Напиши главный вопрос приглашения.'
+    errors.title = screenType === 'acceptance'
+      ? 'Напиши заголовок экрана после согласия.'
+      : 'Напиши главный вопрос приглашения.'
   }
   else if (normalized.title.length > INVITATION_SCREEN_TITLE_MAX_LENGTH) {
     errors.title = `Не больше ${INVITATION_SCREEN_TITLE_MAX_LENGTH} символов.`
@@ -252,21 +255,29 @@ export function validateInvitationScreenEditForm(
   }
 
   if (!normalized.button_text) {
-    errors.button_text = 'Напиши текст кнопки согласия.'
+    errors.button_text = screenType === 'acceptance'
+      ? 'Напиши текст кнопки продолжения.'
+      : 'Напиши текст кнопки согласия.'
   }
   else if (normalized.button_text.length > INVITATION_SCREEN_BUTTON_MAX_LENGTH) {
     errors.button_text = `Не больше ${INVITATION_SCREEN_BUTTON_MAX_LENGTH} символов.`
   }
 
-  if (!normalized.secondary_button_text) {
-    errors.secondary_button_text = 'Напиши текст кнопки отказа.'
-  }
-  else if (normalized.secondary_button_text.length > INVITATION_SCREEN_BUTTON_MAX_LENGTH) {
-    errors.secondary_button_text = `Не больше ${INVITATION_SCREEN_BUTTON_MAX_LENGTH} символов.`
+  if (screenType === 'invitation') {
+    if (!normalized.secondary_button_text) {
+      errors.secondary_button_text = 'Напиши текст кнопки отказа.'
+    }
+    else if (
+      normalized.secondary_button_text.length > INVITATION_SCREEN_BUTTON_MAX_LENGTH
+    ) {
+      errors.secondary_button_text = `Не больше ${INVITATION_SCREEN_BUTTON_MAX_LENGTH} символов.`
+    }
   }
 
-  if (!isInvitationImageCompatible(normalized.image_key, 'invitation')) {
-    errors.image_key = 'Выбери изображение для экрана приглашения.'
+  if (!isInvitationImageCompatible(normalized.image_key, screenType)) {
+    errors.image_key = screenType === 'acceptance'
+      ? 'Выбери изображение для экрана после согласия.'
+      : 'Выбери изображение для экрана приглашения.'
   }
 
   return errors
@@ -274,8 +285,13 @@ export function validateInvitationScreenEditForm(
 
 export function hasInvitationScreenValidationErrors(
   errors: InvitationScreenValidationErrors,
+  screenType: InvitationScreenType = 'invitation',
 ): boolean {
-  return EDITABLE_SCREEN_FIELDS.some(field => Boolean(errors[field]))
+  const fields = screenType === 'invitation'
+    ? EDITABLE_SCREEN_FIELDS
+    : EDITABLE_SCREEN_FIELDS.filter(field => field !== 'secondary_button_text')
+
+  return fields.some(field => Boolean(errors[field]))
 }
 
 export function buildInvitationScreenUpdatePayload(
@@ -294,7 +310,10 @@ export function buildInvitationScreenUpdatePayload(
   if (normalized.button_text !== screen.button_text) {
     payload.button_text = normalized.button_text
   }
-  if (normalized.secondary_button_text !== screen.secondary_button_text) {
+  if (
+    screen.screen_type === 'invitation'
+    && normalized.secondary_button_text !== screen.secondary_button_text
+  ) {
     payload.secondary_button_text = normalized.secondary_button_text
   }
   if (normalized.image_key !== screen.image_key) {

@@ -4,6 +4,7 @@ import type { InvitationImageRecord } from '../../types/invitation-image'
 defineProps<{
   image: InvitationImageRecord
   imageUrl: string
+  inputName: string
   selected: boolean
   selectable: boolean
 }>()
@@ -22,7 +23,7 @@ const emit = defineEmits<{
     <input
       class="sr-only"
       type="radio"
-      name="invitation_screen_image"
+      :name="inputName"
       :value="image.key"
       :checked="selected"
       @change="emit('select', image.key)"

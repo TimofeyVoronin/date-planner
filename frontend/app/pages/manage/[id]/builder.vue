@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import BuilderAcceptanceScreenEditor from '../../../../components/builder/BuilderAcceptanceScreenEditor.vue'
 import BuilderImageLibrary from '../../../../components/builder/BuilderImageLibrary.vue'
 import BuilderInvitationScreenEditor from '../../../../components/builder/BuilderInvitationScreenEditor.vue'
 import BuilderInvitationStep from '../../../../components/builder/BuilderInvitationStep.vue'
@@ -11,7 +12,7 @@ import { useInvitationsApi } from '../../../../composables/useInvitationsApi'
 import { useManagementToken } from '../../../../composables/useManagementToken'
 import type { InvitationRecord } from '../../../../types/invitation'
 import type { InvitationImageKey } from '../../../../types/invitation-image'
-import type { InvitationScreenRecord } from '../../../../types/screen'
+import type { InvitationScreenRecord, InvitationScreenType } from '../../../../types/screen'
 import {
   BUILDER_STEPS,
   builderStepSessionKey,
@@ -62,10 +63,11 @@ const activeScreenTypes = computed(() => (
 const primaryInvitationScreen = computed(() => (
   getInvitationScreenByType(screens.value, 'invitation')
 ))
+const acceptanceInvitationScreen = computed(() => (
+  getInvitationScreenByType(screens.value, 'acceptance')
+))
 const summaryScreens = computed(() => (
-  currentStep.value === 1
-    ? activeScreens.value.filter(screen => screen.screen_type !== 'invitation')
-    : activeScreens.value
+  currentStep.value === 1 ? [] : activeScreens.value
 ))
 const blockedPresentation = computed(() => {
   if (accessBlock.value === 'quick-mode') {
@@ -108,7 +110,13 @@ const autosave = useBuilderAutosave({
   },
 })
 
-const screenAutosave = useInvitationScreenAutosave({
+function replaceSavedScreen(savedScreen: InvitationScreenRecord): void {
+  screens.value = screens.value.map(screen => (
+    screen.screen_type === savedScreen.screen_type ? savedScreen : screen
+  ))
+}
+
+const invitationScreenAutosave = useInvitationScreenAutosave({
   async save(payload) {
     const token = takeManagementToken()
 
@@ -116,20 +124,51 @@ const screenAutosave = useInvitationScreenAutosave({
       throw { statusCode: 401 }
     }
 
-    return api.updateInvitationScreen(invitationId.value, token, payload)
+    return api.updateInvitationScreen(
+      invitationId.value,
+      token,
+      'invitation',
+      payload,
+    )
   },
-  onSaved(savedScreen) {
-    screens.value = screens.value.map(screen => (
-      screen.screen_type === savedScreen.screen_type ? savedScreen : screen
-    ))
-  },
+  onSaved: replaceSavedScreen,
   onAuthorizationError(error) {
     handleAuthorizationError(error)
   },
 })
 
+const acceptanceScreenAutosave = useInvitationScreenAutosave({
+  async save(payload) {
+    const token = takeManagementToken()
+
+    if (!token) {
+      throw { statusCode: 401 }
+    }
+
+    return api.updateInvitationScreen(
+      invitationId.value,
+      token,
+      'acceptance',
+      payload,
+    )
+  },
+  onSaved: replaceSavedScreen,
+  onAuthorizationError(error) {
+    handleAuthorizationError(error)
+  },
+})
+
+const selectedImageKeys = computed(() => ({
+  invitation: invitationScreenAutosave.form.image_key,
+  acceptance: acceptanceScreenAutosave.form.image_key,
+}))
+
 const combinedAutosaveStatus = computed(() => {
-  const statuses = [autosave.status.value, screenAutosave.status.value]
+  const statuses = [
+    autosave.status.value,
+    invitationScreenAutosave.status.value,
+    acceptanceScreenAutosave.status.value,
+  ]
 
   if (statuses.includes('error')) {
     return 'error' as const
@@ -148,7 +187,9 @@ const combinedAutosaveStatus = computed(() => {
 })
 
 const hasUnsavedStepChanges = computed(() => (
-  autosave.hasUnsavedChanges.value || screenAutosave.hasUnsavedChanges.value
+  autosave.hasUnsavedChanges.value
+  || invitationScreenAutosave.hasUnsavedChanges.value
+  || acceptanceScreenAutosave.hasUnsavedChanges.value
 ))
 
 const autosavePresentation = computed(() => {
@@ -227,8 +268,13 @@ async function flushCurrentStep(): Promise<boolean> {
     return true
   }
 
-  const screenSaved = await screenAutosave.flush()
-  if (!screenSaved) {
+  const primaryScreenSaved = await invitationScreenAutosave.flush()
+  if (!primaryScreenSaved) {
+    return false
+  }
+
+  const acceptanceScreenSaved = await acceptanceScreenAutosave.flush()
+  if (!acceptanceScreenSaved) {
     return false
   }
 
@@ -304,10 +350,12 @@ async function loadBuilder(): Promise<void> {
     autosave.resetFromInvitation(nextInvitation)
 
     const primaryScreen = getInvitationScreenByType(nextScreens, 'invitation')
-    if (!primaryScreen) {
-      throw new Error('Сервер не вернул основной экран приглашения.')
+    const acceptanceScreen = getInvitationScreenByType(nextScreens, 'acceptance')
+    if (!primaryScreen || !acceptanceScreen) {
+      throw new Error('Сервер не вернул обязательные экраны приглашения.')
     }
-    screenAutosave.resetFromScreen(primaryScreen)
+    invitationScreenAutosave.resetFromScreen(primaryScreen)
+    acceptanceScreenAutosave.resetFromScreen(acceptanceScreen)
     pageState.value = 'ready'
   }
   catch (error: unknown) {
@@ -323,8 +371,18 @@ async function loadBuilder(): Promise<void> {
   }
 }
 
-function selectInvitationImage(imageKey: InvitationImageKey): void {
-  screenAutosave.form.image_key = imageKey
+function selectScreenImage(
+  screenType: InvitationScreenType,
+  imageKey: InvitationImageKey,
+): void {
+  if (screenType === 'acceptance') {
+    acceptanceScreenAutosave.form.image_key = imageKey
+    return
+  }
+
+  if (screenType === 'invitation') {
+    invitationScreenAutosave.form.image_key = imageKey
+  }
 }
 
 function warnBeforeUnload(event: BeforeUnloadEvent): void {
@@ -392,7 +450,8 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('beforeunload', warnBeforeUnload)
   autosave.dispose()
-  screenAutosave.dispose()
+  invitationScreenAutosave.dispose()
+  acceptanceScreenAutosave.dispose()
 })
 </script>
 
@@ -502,18 +561,32 @@ onUnmounted(() => {
             />
             <BuilderInvitationScreenEditor
               v-if="primaryInvitationScreen"
-              v-model:title="screenAutosave.form.title"
-              v-model:subtitle="screenAutosave.form.subtitle"
-              v-model:button-text="screenAutosave.form.button_text"
-              v-model:secondary-button-text="screenAutosave.form.secondary_button_text"
-              v-model:image-key="screenAutosave.form.image_key"
+              v-model:title="invitationScreenAutosave.form.title"
+              v-model:subtitle="invitationScreenAutosave.form.subtitle"
+              v-model:button-text="invitationScreenAutosave.form.button_text"
+              v-model:secondary-button-text="invitationScreenAutosave.form.secondary_button_text"
+              v-model:image-key="invitationScreenAutosave.form.image_key"
               :invitation="invitation"
-              :status="screenAutosave.status.value"
-              :error-message="screenAutosave.errorMessage.value"
-              :field-errors="screenAutosave.fieldErrors.value"
-              :is-dirty="screenAutosave.isDirty.value"
-              @retry="screenAutosave.retry()"
-              @save-now="screenAutosave.flush()"
+              :status="invitationScreenAutosave.status.value"
+              :error-message="invitationScreenAutosave.errorMessage.value"
+              :field-errors="invitationScreenAutosave.fieldErrors.value"
+              :is-dirty="invitationScreenAutosave.isDirty.value"
+              @retry="invitationScreenAutosave.retry()"
+              @save-now="invitationScreenAutosave.flush()"
+            />
+            <BuilderAcceptanceScreenEditor
+              v-if="acceptanceInvitationScreen"
+              v-model:title="acceptanceScreenAutosave.form.title"
+              v-model:subtitle="acceptanceScreenAutosave.form.subtitle"
+              v-model:button-text="acceptanceScreenAutosave.form.button_text"
+              v-model:image-key="acceptanceScreenAutosave.form.image_key"
+              :invitation="invitation"
+              :status="acceptanceScreenAutosave.status.value"
+              :error-message="acceptanceScreenAutosave.errorMessage.value"
+              :field-errors="acceptanceScreenAutosave.fieldErrors.value"
+              :is-dirty="acceptanceScreenAutosave.isDirty.value"
+              @retry="acceptanceScreenAutosave.retry()"
+              @save-now="acceptanceScreenAutosave.flush()"
             />
             <BuilderScreenConfigSummary v-if="summaryScreens.length" :screens="summaryScreens" />
           </template>
@@ -535,10 +608,12 @@ onUnmounted(() => {
           </section>
 
           <BuilderImageLibrary
-            :editable-screen-type="currentStep === 1 ? 'invitation' : null"
+            :editable-screen-types="currentStep === 1
+              ? ['invitation', 'acceptance']
+              : []"
             :screen-types="activeScreenTypes"
-            :selected-image-key="currentStep === 1 ? screenAutosave.form.image_key : null"
-            @select-image="selectInvitationImage"
+            :selected-image-keys="currentStep === 1 ? selectedImageKeys : {}"
+            @select-image="selectScreenImage"
           />
         </article>
 

@@ -15,6 +15,7 @@ from apps.common.mixins import NoStoreResponseMixin
 from apps.common.models import Invitation, InvitationScreen
 from apps.common.screens import order_invitation_screens
 from apps.common.serializers import (
+    InvitationPrimaryScreenUpdateSerializer,
     InvitationScreenSerializer,
     InvitationScreenUpdateSerializer,
 )
@@ -51,7 +52,9 @@ class InvitationScreenListView(NoStoreResponseMixin, generics.GenericAPIView):
         invitation = self.get_object()
         if invitation.creation_mode != Invitation.CreationMode.EXTENDED:
             return Response(
-                {"detail": ("Screen configuration is available only for extended invitations.")},
+                {
+                    "detail": ("Screen configuration is available only for extended invitations."),
+                },
                 status=status.HTTP_409_CONFLICT,
             )
 
@@ -60,14 +63,15 @@ class InvitationScreenListView(NoStoreResponseMixin, generics.GenericAPIView):
         return Response(output_data, status=status.HTTP_200_OK)
 
 
-class InvitationPrimaryScreenUpdateView(NoStoreResponseMixin, generics.GenericAPIView):
-    """Partially update the primary recipient-facing screen of an extended draft."""
+class InvitationScreenUpdateView(NoStoreResponseMixin, generics.GenericAPIView):
+    """Partially update one recipient-facing screen of an extended draft."""
 
     queryset = Invitation.objects.all()
     serializer_class = InvitationScreenUpdateSerializer
     authentication_classes = [ManagementTokenAuthentication]
     permission_classes = [HasInvitationManagementToken]
     http_method_names = ["patch", "options"]
+    screen_type: str
 
     def get_queryset(self):
         """Lock the invitation capability target during a screen update."""
@@ -75,8 +79,7 @@ class InvitationPrimaryScreenUpdateView(NoStoreResponseMixin, generics.GenericAP
 
     @extend_schema(
         tags=["invitations"],
-        summary="Partially update the primary invitation screen",
-        request=InvitationScreenUpdateSerializer,
+        summary="Partially update an invitation screen",
         responses={
             status.HTTP_200_OK: InvitationScreenSerializer,
             status.HTTP_400_BAD_REQUEST: OpenApiResponse(
@@ -89,7 +92,7 @@ class InvitationPrimaryScreenUpdateView(NoStoreResponseMixin, generics.GenericAP
                 description="The management token does not match this invitation."
             ),
             status.HTTP_404_NOT_FOUND: OpenApiResponse(
-                description="Invitation or primary screen not found."
+                description="Invitation or requested screen not found."
             ),
             status.HTTP_409_CONFLICT: OpenApiResponse(
                 description="Only an unpublished extended invitation can be edited."
@@ -100,7 +103,7 @@ class InvitationPrimaryScreenUpdateView(NoStoreResponseMixin, generics.GenericAP
         },
     )
     def patch(self, request: Request, *args: object, **kwargs: object) -> Response:
-        """Apply a minimal idempotent PATCH to the draft's invitation screen."""
+        """Apply a minimal idempotent PATCH to the configured draft screen."""
         with transaction.atomic():
             invitation = self.get_object()
             if invitation.creation_mode != Invitation.CreationMode.EXTENDED:
@@ -117,7 +120,7 @@ class InvitationPrimaryScreenUpdateView(NoStoreResponseMixin, generics.GenericAP
             screen = get_object_or_404(
                 InvitationScreen.objects.select_for_update(),
                 invitation_id=invitation.pk,
-                screen_type=InvitationScreen.ScreenType.INVITATION,
+                screen_type=self.screen_type,
             )
             input_serializer = self.get_serializer(
                 screen,
@@ -129,3 +132,17 @@ class InvitationPrimaryScreenUpdateView(NoStoreResponseMixin, generics.GenericAP
             output_data = InvitationScreenSerializer(screen).data
 
         return Response(output_data, status=status.HTTP_200_OK)
+
+
+class InvitationPrimaryScreenUpdateView(InvitationScreenUpdateView):
+    """Update the initial invitation question and both response actions."""
+
+    serializer_class = InvitationPrimaryScreenUpdateSerializer
+    screen_type = InvitationScreen.ScreenType.INVITATION
+
+
+class InvitationAcceptanceScreenUpdateView(InvitationScreenUpdateView):
+    """Update the screen shown after the recipient accepts the invitation."""
+
+    serializer_class = InvitationScreenUpdateSerializer
+    screen_type = InvitationScreen.ScreenType.ACCEPTANCE

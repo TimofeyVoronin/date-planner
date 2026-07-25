@@ -15,6 +15,15 @@ const screenRecord: InvitationScreenRecord = {
   image_key: 'invitation-default',
 }
 
+const acceptanceScreenRecord: InvitationScreenRecord = {
+  screen_type: 'acceptance',
+  title: 'Ура! 💘',
+  subtitle: 'Теперь давай выберем, когда увидимся.',
+  button_text: 'Выбрать дату',
+  secondary_button_text: '',
+  image_key: 'acceptance-default',
+}
+
 function savedScreen(payload: InvitationScreenUpdatePayload): InvitationScreenRecord {
   return {
     ...screenRecord,
@@ -107,6 +116,28 @@ describe('invitation screen autosave', () => {
       title: 'Новый вопрос',
       image_key: 'invitation-moon',
     })
+    scope.stop()
+  })
+
+  it('autosaves the acceptance screen without requiring a decline button', async () => {
+    const save = vi.fn(async (payload: InvitationScreenUpdatePayload) => ({
+      ...acceptanceScreenRecord,
+      ...payload,
+    }))
+    const scope = effectScope()
+    const autosave = scope.run(() => useInvitationScreenAutosave({ save }))!
+
+    autosave.resetFromScreen(acceptanceScreenRecord)
+    autosave.form.title = 'Ты правда согласился?'
+    autosave.form.image_key = 'acceptance-together'
+
+    await expect(autosave.flush()).resolves.toBe(true)
+    expect(save).toHaveBeenCalledWith({
+      title: 'Ты правда согласился?',
+      image_key: 'acceptance-together',
+    })
+    expect(autosave.fieldErrors.value.secondary_button_text).toBeUndefined()
+    expect(autosave.status.value).toBe('saved')
     scope.stop()
   })
 
