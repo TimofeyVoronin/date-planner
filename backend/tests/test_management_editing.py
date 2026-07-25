@@ -16,6 +16,7 @@ EDITABLE_FIELDS = {
     "recipient_name",
     "message",
     "creation_mode",
+    "planning_mode",
 }
 
 
@@ -78,7 +79,10 @@ def test_author_can_partially_update_one_invitation_field() -> None:
 def test_author_can_update_all_editable_fields_together() -> None:
     """The management endpoint accepts the complete safe edit set."""
     client = APIClient()
-    invitation, token = create_invitation(client)
+    invitation, token = create_invitation(
+        client,
+        creation_mode=Invitation.CreationMode.EXTENDED,
+    )
 
     response = client.patch(
         management_url(invitation),
@@ -87,6 +91,7 @@ def test_author_can_update_all_editable_fields_together() -> None:
             "recipient_name": "Галина",
             "message": "  Пойдём в театр?  ",
             "creation_mode": Invitation.CreationMode.EXTENDED,
+            "planning_mode": Invitation.PlanningMode.BEFORE_ACCEPTANCE,
         },
         format="json",
         **authorization(token),
@@ -98,6 +103,7 @@ def test_author_can_update_all_editable_fields_together() -> None:
         "recipient_name": "Галина",
         "message": "Пойдём в театр?",
         "creation_mode": Invitation.CreationMode.EXTENDED,
+        "planning_mode": Invitation.PlanningMode.BEFORE_ACCEPTANCE,
     }
 
     invitation.refresh_from_db()
@@ -158,6 +164,8 @@ def test_repeating_equivalent_values_does_not_touch_updated_at() -> None:
         ({"message": "M" * 1001}, "message"),
         ({"creation_mode": "wizard"}, "creation_mode"),
         ({"creation_mode": None}, "creation_mode"),
+        ({"planning_mode": "before_publication"}, "planning_mode"),
+        ({"planning_mode": None}, "planning_mode"),
     ],
 )
 def test_management_update_rejects_invalid_editable_values(

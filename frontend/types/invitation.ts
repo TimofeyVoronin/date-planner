@@ -8,9 +8,11 @@ export const MIN_PLAN_OPTIONS = 2
 export const MAX_PLAN_OPTIONS = 5
 export const INVITATION_CREATION_MODES = ['quick', 'extended'] as const
 export const INVITATION_PUBLICATION_STATUSES = ['draft', 'published'] as const
+export const INVITATION_PLANNING_MODES = ['before_acceptance', 'after_acceptance'] as const
 
 export type InvitationCreationMode = typeof INVITATION_CREATION_MODES[number]
 export type InvitationPublicationStatus = typeof INVITATION_PUBLICATION_STATUSES[number]
+export type InvitationPlanningMode = typeof INVITATION_PLANNING_MODES[number]
 export type InvitationResponseStatus = 'pending' | 'accepted' | 'declined'
 export type FinalInvitationResponseStatus = Exclude<InvitationResponseStatus, 'pending'>
 
@@ -21,7 +23,11 @@ export type InvitationCreatePayload = {
   creation_mode: InvitationCreationMode
 }
 
-export type InvitationUpdatePayload = Partial<InvitationCreatePayload>
+export type InvitationEditForm = InvitationCreatePayload & {
+  planning_mode: InvitationPlanningMode
+}
+
+export type InvitationUpdatePayload = Partial<InvitationEditForm>
 
 export type InvitationEditSaveState = 'error' | 'idle' | 'saving' | 'success'
 
@@ -53,6 +59,7 @@ export type PlanConfirmationPayload = {
 }
 
 export type InvitationRecord = InvitationCreatePayload & {
+  planning_mode: InvitationPlanningMode
   id: string
   server_now: string
   publication_status: InvitationPublicationStatus
@@ -72,7 +79,7 @@ export type InvitationCreateResponse = InvitationRecord & {
   management_token: string
 }
 
-export type InvitationField = keyof InvitationCreatePayload
+export type InvitationField = keyof InvitationEditForm
 
 export type InvitationValidationErrors = Partial<Record<InvitationField, string>>
 

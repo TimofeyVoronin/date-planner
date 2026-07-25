@@ -12,6 +12,7 @@ const invitationRecord: InvitationRecord = {
   recipient_name: 'Борис',
   message: 'Давай сходим на свидание?',
   creation_mode: 'extended',
+  planning_mode: 'after_acceptance',
   publication_status: 'draft',
   published_at: null,
   response_status: 'pending',
@@ -78,6 +79,20 @@ describe('builder autosave', () => {
     })
     expect(autosave.status.value).toBe('saved')
     expect(autosave.hasUnsavedChanges.value).toBe(false)
+    scope.stop()
+  })
+
+  it('autosaves the planning mode as a minimal invitation PATCH', async () => {
+    const save = vi.fn(async (payload: InvitationUpdatePayload) => savedRecord(payload))
+    const scope = effectScope()
+    const autosave = scope.run(() => useBuilderAutosave({ save }))!
+
+    autosave.resetFromInvitation(invitationRecord)
+    autosave.form.planning_mode = 'before_acceptance'
+
+    await expect(autosave.flush()).resolves.toBe(true)
+    expect(save).toHaveBeenCalledWith({ planning_mode: 'before_acceptance' })
+    expect(autosave.status.value).toBe('saved')
     scope.stop()
   })
 

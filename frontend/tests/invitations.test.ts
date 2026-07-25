@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { InvitationCreatePayload, InvitationRecord } from '../types/invitation'
+import type {
+  InvitationCreatePayload,
+  InvitationEditForm,
+  InvitationRecord,
+} from '../types/invitation'
 import {
   buildInvitationUpdatePayload,
   buildManagementInvitationUrl,
@@ -7,9 +11,11 @@ import {
   createInvitationEditForm,
   hasInvitationValidationErrors,
   getInvitationCreationModePresentation,
+  getInvitationPlanningModePresentation,
   getInvitationPublicationPresentation,
   getInvitationResponsePresentation,
   isInvitationCreationMode,
+  isInvitationPlanningMode,
   isInvitationPublicationStatus,
   isInvitationId,
   isFinalInvitationResponseStatus,
@@ -18,12 +24,14 @@ import {
   invitationEditFormHasChanges,
   invitationStatusToAnswer,
   managementTokenSessionKey,
+  normalizeInvitationEditForm,
   normalizeInvitationPayload,
   parseInvitationApiError,
   shouldClearInvitationEditFeedback,
   parseInvitationResponseApiError,
   readManagementToken,
   refreshInvitationResponseAfterConflict,
+  validateInvitationEditForm,
   validateInvitationPayload,
 } from '../utils/invitations'
 
@@ -38,6 +46,7 @@ const invitationRecord: InvitationRecord = {
   ...validPayload,
   id: 'd9428888-122b-11e1-b85c-61cd3cbb3210',
   server_now: '2030-01-01T10:00:00Z',
+  planning_mode: 'after_acceptance',
   publication_status: 'published',
   published_at: '2030-01-01T09:00:00Z',
   response_status: 'pending',
@@ -128,6 +137,29 @@ describe('invitation form helpers', () => {
     })
   })
 
+  it('normalizes and validates the planning mode for managed edits', () => {
+    const quickForm: InvitationEditForm = {
+      ...validPayload,
+      planning_mode: 'before_acceptance',
+    }
+
+    expect(normalizeInvitationEditForm(quickForm).planning_mode).toBe('after_acceptance')
+    expect(validateInvitationEditForm(quickForm).planning_mode).toContain('быстром режиме')
+    expect(validateInvitationEditForm({
+      ...quickForm,
+      creation_mode: 'extended',
+    })).toEqual({})
+  })
+
+  it('recognizes and presents both planning modes', () => {
+    expect(isInvitationPlanningMode('before_acceptance')).toBe(true)
+    expect(isInvitationPlanningMode('after_acceptance')).toBe(true)
+    expect(isInvitationPlanningMode('before_publication')).toBe(false)
+
+    expect(getInvitationPlanningModePresentation('before_acceptance').label).toContain('заранее')
+    expect(getInvitationPlanningModePresentation('after_acceptance').label).toContain('после')
+  })
+
   it('reports a missing runtime creation mode before sending the payload', () => {
     const malformedPayload = {
       ...validPayload,
@@ -145,7 +177,10 @@ describe('invitation management editing', () => {
   it('creates a detached edit form from the managed invitation', () => {
     const form = createInvitationEditForm(invitationRecord)
 
-    expect(form).toEqual(validPayload)
+    expect(form).toEqual({
+      ...validPayload,
+      planning_mode: 'after_acceptance',
+    })
     form.author_name = 'Изменённое локально'
     expect(invitationRecord.author_name).toBe('Алиса')
   })
@@ -175,11 +210,12 @@ describe('invitation management editing', () => {
   })
 
   it('includes every changed editable field and nothing else', () => {
-    const form: InvitationCreatePayload = {
+    const form: InvitationEditForm = {
       author_name: 'Виктор',
       recipient_name: 'Галина',
       message: 'Пойдём в театр?',
       creation_mode: 'extended',
+      planning_mode: 'before_acceptance',
     }
 
     expect(buildInvitationUpdatePayload(form, invitationRecord)).toEqual(form)
@@ -230,6 +266,18 @@ describe('invitation links', () => {
 })
 
 describe('API error presentation', () => {
+  it('explains publication conflicts for incomplete preconfigured dates', () => {
+    const parsed = parseInvitationApiError({
+      response: {
+        status: 409,
+        _data: { code: 'planning_options_required' },
+      },
+    })
+
+    expect(parsed.code).toBe('planning_options_required')
+    expect(parsed.message).toContain('от двух до пяти')
+  })
+
   it('shows a dedicated message for rate limiting', () => {
     expect(parseInvitationApiError({ statusCode: 429 }).message).toContain('минуту')
   })

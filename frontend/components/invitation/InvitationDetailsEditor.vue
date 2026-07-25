@@ -4,7 +4,7 @@ import {
   INVITATION_CREATION_MODES,
   INVITATION_MESSAGE_MAX_LENGTH,
   INVITATION_NAME_MAX_LENGTH,
-  type InvitationCreatePayload,
+  type InvitationEditForm,
   type InvitationEditSaveState,
   type InvitationRecord,
   type InvitationUpdatePayload,
@@ -16,7 +16,7 @@ import {
   getInvitationCreationModePresentation,
   hasInvitationValidationErrors,
   invitationEditFormHasChanges,
-  validateInvitationPayload,
+  validateInvitationEditForm,
 } from '../../utils/invitations'
 
 const props = defineProps<{
@@ -31,7 +31,7 @@ const emit = defineEmits<{
   save: [payload: InvitationUpdatePayload]
 }>()
 
-const form = reactive<InvitationCreatePayload>(createInvitationEditForm(props.invitation))
+const form = reactive<InvitationEditForm>(createInvitationEditForm(props.invitation))
 const localErrors = ref<InvitationValidationErrors>({})
 const isLocallyDirty = ref(false)
 const creationModes = INVITATION_CREATION_MODES
@@ -55,7 +55,7 @@ function resetForm(): void {
 }
 
 function submitChanges(): void {
-  const validationErrors = validateInvitationPayload(form)
+  const validationErrors = validateInvitationEditForm(form)
 
   localErrors.value = validationErrors
   if (hasInvitationValidationErrors(validationErrors)) {
@@ -77,10 +77,20 @@ watch(
     props.invitation.recipient_name,
     props.invitation.message,
     props.invitation.creation_mode,
+    props.invitation.planning_mode,
   ] as const,
   () => {
     if (props.saveState === 'saving' || !isLocallyDirty.value || !hasChanges.value) {
       resetForm()
+    }
+  },
+)
+
+watch(
+  () => form.creation_mode,
+  (creationMode) => {
+    if (creationMode === 'quick') {
+      form.planning_mode = 'after_acceptance'
     }
   },
 )
@@ -253,7 +263,8 @@ watch(
             </label>
           </div>
           <span id="managed-creation-mode-hint" class="form-field__hint">
-            Смена режима не публикует черновик и не сбрасывает ответ или планирование.
+            Смена режима не публикует черновик. Быстрый режим всегда переносит подготовку дат
+            на этап после согласия.
           </span>
           <span
             v-if="displayedErrors.creation_mode"
