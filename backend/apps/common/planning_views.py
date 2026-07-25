@@ -23,7 +23,7 @@ from apps.common.serializers import (
 
 
 class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
-    """Atomically replace the author's options for an accepted invitation."""
+    """Atomically replace options at the time selected by the invitation author."""
 
     queryset = Invitation.objects.select_for_update()
     serializer_class = InvitationPlanOptionsUpdateSerializer
@@ -49,8 +49,8 @@ class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
             status.HTTP_404_NOT_FOUND: OpenApiResponse(description="Invitation not found."),
             status.HTTP_409_CONFLICT: OpenApiResponse(
                 description=(
-                    "The invitation is not accepted, or its selection is still future-dated "
-                    "or already confirmed."
+                    "The invitation is not currently editable in its planning mode, or its "
+                    "selection is still future-dated or already confirmed."
                 )
             ),
             status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
@@ -64,9 +64,24 @@ class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
             invitation = self.get_object()
             input_serializer = self.get_serializer(data=request.data)
             input_serializer.is_valid(raise_exception=True)
-            if invitation.response_status != Invitation.ResponseStatus.ACCEPTED:
+            if invitation.planning_mode == Invitation.PlanningMode.BEFORE_ACCEPTANCE:
+                planning_is_available = (
+                    invitation.creation_mode == Invitation.CreationMode.EXTENDED
+                    and invitation.publication_status == Invitation.PublicationStatus.DRAFT
+                )
+                planning_error = (
+                    "Dates prepared before acceptance can change only while the "
+                    "extended invitation is a draft."
+                )
+            else:
+                planning_is_available = (
+                    invitation.response_status == Invitation.ResponseStatus.ACCEPTED
+                )
+                planning_error = "Planning is available only after the invitation is accepted."
+
+            if not planning_is_available:
                 return Response(
-                    {"detail": "Planning is available only for an accepted invitation."},
+                    {"detail": planning_error},
                     status=status.HTTP_409_CONFLICT,
                 )
             current_selection = invitation.plan_options.filter(selected_at__isnull=False).first()

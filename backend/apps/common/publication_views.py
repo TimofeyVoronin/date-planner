@@ -41,6 +41,9 @@ class InvitationPublicationView(NoStoreResponseMixin, generics.GenericAPIView):
                 description="The management token does not match this invitation."
             ),
             status.HTTP_404_NOT_FOUND: OpenApiResponse(description="Invitation not found."),
+            status.HTTP_409_CONFLICT: OpenApiResponse(
+                description="A before-acceptance flow requires two to five future date options."
+            ),
             status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
                 description="The invitation publication rate limit was exceeded."
             ),
@@ -51,8 +54,34 @@ class InvitationPublicationView(NoStoreResponseMixin, generics.GenericAPIView):
         with transaction.atomic():
             invitation = self.get_object()
             if invitation.publication_status == Invitation.PublicationStatus.DRAFT:
+                publication_time = now()
+                if invitation.planning_mode == Invitation.PlanningMode.BEFORE_ACCEPTANCE:
+                    options = list(invitation.plan_options.all())
+                    if not 2 <= len(options) <= 5:
+                        return Response(
+                            {
+                                "code": "planning_options_required",
+                                "detail": (
+                                    "Add between two and five date options before "
+                                    "publishing this invitation."
+                                ),
+                            },
+                            status=status.HTTP_409_CONFLICT,
+                        )
+                    if any(option.starts_at <= publication_time for option in options):
+                        return Response(
+                            {
+                                "code": "planning_options_expired",
+                                "detail": (
+                                    "All date options must still be in the future "
+                                    "when the invitation is published."
+                                ),
+                            },
+                            status=status.HTTP_409_CONFLICT,
+                        )
+
                 invitation.publication_status = Invitation.PublicationStatus.PUBLISHED
-                invitation.published_at = now()
+                invitation.published_at = publication_time
                 invitation.save(
                     update_fields=(
                         "publication_status",

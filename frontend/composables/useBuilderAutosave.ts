@@ -9,7 +9,7 @@ import {
   type Ref,
 } from 'vue'
 import type {
-  InvitationCreatePayload,
+  InvitationEditForm,
   InvitationRecord,
   InvitationUpdatePayload,
   InvitationValidationErrors,
@@ -20,7 +20,7 @@ import {
   hasInvitationValidationErrors,
   invitationEditFormHasChanges,
   parseInvitationApiError,
-  validateInvitationPayload,
+  validateInvitationEditForm,
   type InvitationApiError,
 } from '../utils/invitations'
 
@@ -40,7 +40,7 @@ export type BuilderAutosave = {
   errorMessage: Ref<string>
   fieldErrors: Ref<InvitationValidationErrors>
   flush: () => Promise<boolean>
-  form: InvitationCreatePayload
+  form: InvitationEditForm
   hasUnsavedChanges: ComputedRef<boolean>
   isDirty: ComputedRef<boolean>
   resetFromInvitation: (invitation: InvitationRecord) => void
@@ -51,11 +51,12 @@ export type BuilderAutosave = {
 export function useBuilderAutosave(options: BuilderAutosaveOptions): BuilderAutosave {
   const debounceMs = options.debounceMs ?? BUILDER_AUTOSAVE_DELAY_MS
   const baseline = ref<InvitationRecord | null>(null)
-  const form = reactive<InvitationCreatePayload>({
+  const form = reactive<InvitationEditForm>({
     author_name: '',
     recipient_name: '',
     message: '',
     creation_mode: 'extended',
+    planning_mode: 'after_acceptance',
   })
   const status = ref<BuilderAutosaveStatus>('idle')
   const errorMessage = ref('')
@@ -122,7 +123,7 @@ export function useBuilderAutosave(options: BuilderAutosaveOptions): BuilderAuto
       return false
     }
 
-    const validationErrors = validateInvitationPayload(form)
+    const validationErrors = validateInvitationEditForm(form)
 
     if (hasInvitationValidationErrors(validationErrors)) {
       fieldErrors.value = validationErrors

@@ -6,6 +6,7 @@ import BuilderImageLibrary from '../../../../components/builder/BuilderImageLibr
 import BuilderInvitationScreenEditor from '../../../../components/builder/BuilderInvitationScreenEditor.vue'
 import BuilderInvitationStep from '../../../../components/builder/BuilderInvitationStep.vue'
 import BuilderMobilePreview from '../../../../components/builder/BuilderMobilePreview.vue'
+import BuilderPlanningModeStep from '../../../../components/builder/BuilderPlanningModeStep.vue'
 import BuilderScreenConfigSummary from '../../../../components/builder/BuilderScreenConfigSummary.vue'
 import { useBuilderAutosave } from '../../../../composables/useBuilderAutosave'
 import { useInvitationScreenAutosave } from '../../../../composables/useInvitationScreenAutosave'
@@ -300,22 +301,31 @@ async function restoreStepNavigation(): Promise<void> {
 }
 
 async function flushCurrentStep(): Promise<boolean> {
-  if (currentStep.value !== 1 || !hasUnsavedStepChanges.value) {
+  if (!hasUnsavedStepChanges.value) {
     return true
   }
 
-  const primaryScreenSaved = await invitationScreenAutosave.flush()
-  if (!primaryScreenSaved) {
-    return false
+  if (currentStep.value === 1) {
+    const primaryScreenSaved = await invitationScreenAutosave.flush()
+    if (!primaryScreenSaved) {
+      return false
+    }
+
+    const acceptanceScreenSaved = await acceptanceScreenAutosave.flush()
+    if (!acceptanceScreenSaved) {
+      return false
+    }
+
+    const invitationSaved = await autosave.flush()
+    return invitationSaved && pageState.value === 'ready'
   }
 
-  const acceptanceScreenSaved = await acceptanceScreenAutosave.flush()
-  if (!acceptanceScreenSaved) {
-    return false
+  if (currentStep.value === 2 && autosave.hasUnsavedChanges.value) {
+    const invitationSaved = await autosave.flush()
+    return invitationSaved && pageState.value === 'ready'
   }
 
-  const invitationSaved = await autosave.flush()
-  return invitationSaved && pageState.value === 'ready'
+  return true
 }
 
 async function goToStep(step: BuilderStepNumber): Promise<void> {
@@ -545,7 +555,7 @@ onUnmounted(() => {
           <h1 id="builder-page-title">Конструктор приглашения</h1>
           <span>
             {{ invitation.author_name }}, настрой сценарий для {{ invitation.recipient_name }}.
-            Изменения первого шага сохраняются автоматически.
+            Изменения конструктора сохраняются автоматически.
           </span>
         </header>
 
@@ -624,6 +634,36 @@ onUnmounted(() => {
                 />
               </template>
 
+              <template v-else-if="currentStep === 2">
+                <BuilderPlanningModeStep
+                  v-model:planning-mode="autosave.form.planning_mode"
+                  :status="autosave.status.value"
+                  :error-message="autosave.errorMessage.value"
+                  :field-errors="autosave.fieldErrors.value"
+                  :is-dirty="autosave.isDirty.value"
+                  @retry="autosave.retry()"
+                  @save-now="autosave.flush()"
+                />
+                <section
+                  class="builder-stage__placeholder"
+                  aria-label="Редактор вариантов даты в следующей задаче"
+                >
+                  <p>Следующая итерация</p>
+                  <h3>Добавление вариантов даты и времени</h3>
+                  <BuilderScreenConfigSummary :screens="summaryScreens" />
+                  <ul>
+                    <li v-for="feature in activeStep.plannedFeatures" :key="feature">
+                      <span aria-hidden="true">✓</span>
+                      {{ feature }}
+                    </li>
+                  </ul>
+                  <p class="builder-stage__notice">
+                    В DPL-302 здесь появится редактор двух–пяти вариантов. Сейчас сохраняется
+                    только безопасный сценарий: до публикации или после согласия.
+                  </p>
+                </section>
+              </template>
+
               <section v-else class="builder-stage__placeholder" aria-label="Содержимое будущего шага">
                 <p>Каркас шага готов</p>
                 <h3>Что появится здесь в следующих задачах</h3>
@@ -677,7 +717,7 @@ onUnmounted(() => {
             aria-live="polite"
           >
             <strong>Шаг {{ currentStep }} из {{ BUILDER_STEPS.length }}</strong>
-            <span>{{ currentStep === 1 ? autosavePresentation.label : 'Позиция сохранена' }}</span>
+            <span>{{ currentStep <= 2 ? autosavePresentation.label : 'Позиция сохранена' }}</span>
           </div>
           <button
             v-if="nextStep"

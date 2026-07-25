@@ -48,6 +48,11 @@ def test_create_invitation_persists_and_returns_public_fields() -> None:
     assert body["recipient_name"] == invitation.recipient_name == "Борис"
     assert body["message"] == invitation.message == "Давай сходим на свидание?"
     assert body["creation_mode"] == invitation.creation_mode == Invitation.CreationMode.QUICK
+    assert (
+        body["planning_mode"]
+        == invitation.planning_mode
+        == Invitation.PlanningMode.AFTER_ACCEPTANCE
+    )
     assert body["publication_status"] == Invitation.PublicationStatus.PUBLISHED
     assert invitation.publication_status == Invitation.PublicationStatus.PUBLISHED
     assert body["published_at"]
@@ -79,6 +84,7 @@ def test_create_invitation_persists_explicit_extended_mode() -> None:
     invitation = Invitation.objects.get(pk=body["id"])
     assert body["creation_mode"] == Invitation.CreationMode.EXTENDED
     assert invitation.creation_mode == Invitation.CreationMode.EXTENDED
+    assert body["planning_mode"] == Invitation.PlanningMode.AFTER_ACCEPTANCE
     assert body["publication_status"] == Invitation.PublicationStatus.DRAFT
     assert body["published_at"] is None
     assert invitation.publication_status == Invitation.PublicationStatus.DRAFT
@@ -136,6 +142,7 @@ def test_read_invitation_by_uuid() -> None:
         "id": str(invitation.pk),
         **invitation_payload(),
         "creation_mode": Invitation.CreationMode.QUICK,
+        "planning_mode": Invitation.PlanningMode.AFTER_ACCEPTANCE,
         "publication_status": Invitation.PublicationStatus.PUBLISHED,
         "published_at": invitation.published_at.isoformat().replace("+00:00", "Z"),
         "response_status": Invitation.ResponseStatus.PENDING,

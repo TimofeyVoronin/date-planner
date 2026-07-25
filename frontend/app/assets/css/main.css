@@ -4447,3 +4447,112 @@ button {
     transform: none !important;
   }
 }
+
+/* DPL-301: choose when date options are prepared without mixing that choice with option data. */
+.builder-planning-mode {
+  display: grid;
+  padding: 26px;
+  gap: 22px;
+  border: 1px solid #efd1dc;
+  border-radius: 22px;
+  background: linear-gradient(160deg, #fff, #fff9fb);
+}
+
+.builder-planning-mode__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.builder-planning-mode__heading p,
+.builder-planning-mode__heading h3,
+.builder-planning-mode__description,
+.builder-planning-mode__result p {
+  margin: 0;
+}
+
+.builder-planning-mode__heading p {
+  color: #aa5574;
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.builder-planning-mode__heading h3 {
+  margin-top: 4px;
+  color: #4d2a3b;
+  font-size: 1.16rem;
+}
+
+.builder-planning-mode__description {
+  margin-top: -10px;
+  color: #80616f;
+  font-size: .8rem;
+  line-height: 1.55;
+}
+
+.builder-planning-mode__fieldset {
+  display: grid;
+  gap: 10px;
+}
+
+.builder-planning-mode__options .creation-mode-option__surface {
+  min-height: 164px;
+}
+
+.builder-planning-mode__result {
+  display: flex;
+  padding: 14px 16px;
+  align-items: center;
+  gap: 12px;
+  color: #694b5b;
+  border: 1px solid #d7e9df;
+  border-radius: 16px;
+  background: #f2faf6;
+}
+
+.builder-planning-mode__result > span {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 6px 16px rgb(63 107 82 / 10%);
+}
+
+.builder-planning-mode__result div {
+  display: grid;
+  gap: 3px;
+}
+
+.builder-planning-mode__result strong {
+  color: #416451;
+  font-size: .82rem;
+}
+
+.builder-planning-mode__result p {
+  font-size: .75rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 620px) {
+  .builder-planning-mode {
+    padding: 20px;
+  }
+
+  .builder-planning-mode__heading {
+    display: grid;
+  }
+
+  .builder-planning-mode__options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .builder-planning-mode__options .creation-mode-option__surface {
+    min-height: 0;
+  }
+}

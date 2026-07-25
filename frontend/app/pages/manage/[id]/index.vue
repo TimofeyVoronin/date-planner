@@ -19,6 +19,7 @@ import { buildBuilderPath } from '../../../../utils/builder'
 import {
   buildPublicInvitationUrl,
   getInvitationCreationModePresentation,
+  getInvitationPlanningModePresentation,
   getInvitationPublicationPresentation,
   getInvitationResponsePresentation,
   isInvitationId,
@@ -78,6 +79,9 @@ const creationModePresentation = computed(() => getInvitationCreationModePresent
 ))
 const publicationPresentation = computed(() => getInvitationPublicationPresentation(
   invitation.value?.publication_status ?? 'draft',
+))
+const planningModePresentation = computed(() => getInvitationPlanningModePresentation(
+  invitation.value?.planning_mode ?? 'after_acceptance',
 ))
 const selectedPlanOption = computed(() => findSelectedPlanOption(
   invitation.value?.plan_options ?? [],
@@ -705,7 +709,10 @@ onUnmounted(() => {
               </button>
             </section>
 
-            <template v-else-if="confirmationStage === 'expired'">
+            <template
+              v-else-if="confirmationStage === 'expired'
+                && invitation.planning_mode === 'after_acceptance'"
+            >
               <section
                 class="plan-recovery"
                 aria-labelledby="plan-recovery-title"
@@ -738,7 +745,8 @@ onUnmounted(() => {
             </template>
 
             <PlanOptionsEditor
-              v-else-if="invitation.response_status === 'accepted'"
+              v-else-if="invitation.response_status === 'accepted'
+                && invitation.planning_mode === 'after_acceptance'"
               :current-time="currentTime"
               :options="invitation.plan_options"
               :save-error="planSaveError"
@@ -746,6 +754,23 @@ onUnmounted(() => {
               @dirty="markPlanDirty"
               @save="savePlanningOptions"
             />
+
+            <section
+              v-else-if="invitation.planning_mode === 'before_acceptance'
+                && invitation.response_status === 'accepted'"
+              class="plan-recovery"
+              role="status"
+            >
+              <span class="plan-recovery__icon" aria-hidden="true">🔒</span>
+              <div>
+                <p>Даты подготовлены заранее</p>
+                <h2>Опубликованный набор защищён от замены</h2>
+                <p>
+                  Получатель выбирает из вариантов, которые были опубликованы вместе с
+                  приглашением. Восстановление просроченного набора появится в DPL-304.
+                </p>
+              </div>
+            </section>
           </template>
 
           <dl class="manage-card__details">
@@ -753,6 +778,12 @@ onUnmounted(() => {
               <dt>Режим</dt>
               <dd>
                 {{ creationModePresentation.icon }} {{ creationModePresentation.label }}
+              </dd>
+            </div>
+            <div>
+              <dt>Подготовка дат</dt>
+              <dd>
+                {{ planningModePresentation.icon }} {{ planningModePresentation.label }}
               </dd>
             </div>
             <div>

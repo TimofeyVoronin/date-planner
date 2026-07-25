@@ -22,6 +22,12 @@ class Invitation(models.Model):
         DRAFT = "draft", "Draft"
         PUBLISHED = "published", "Published"
 
+    class PlanningMode(models.TextChoices):
+        """Decide when the author prepares recipient-facing date options."""
+
+        BEFORE_ACCEPTANCE = "before_acceptance", "Before acceptance"
+        AFTER_ACCEPTANCE = "after_acceptance", "After acceptance"
+
     class ResponseStatus(models.TextChoices):
         """Allowed lifecycle states for a recipient's response."""
 
@@ -42,6 +48,11 @@ class Invitation(models.Model):
         max_length=9,
         choices=PublicationStatus.choices,
         default=PublicationStatus.PUBLISHED,
+    )
+    planning_mode = models.CharField(
+        max_length=17,
+        choices=PlanningMode.choices,
+        default=PlanningMode.AFTER_ACCEPTANCE,
     )
     published_at = models.DateTimeField(
         null=True,
@@ -83,6 +94,21 @@ class Invitation(models.Model):
             models.CheckConstraint(
                 condition=models.Q(creation_mode__in=("quick", "extended")),
                 name="invitation_creation_mode_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    planning_mode__in=(
+                        "before_acceptance",
+                        "after_acceptance",
+                    )
+                ),
+                name="invitation_planning_mode_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(creation_mode="extended") | models.Q(planning_mode="after_acceptance")
+                ),
+                name="quick_invitation_plans_after_acceptance",
             ),
             models.CheckConstraint(
                 condition=(
