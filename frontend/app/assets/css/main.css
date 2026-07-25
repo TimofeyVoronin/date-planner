@@ -3683,3 +3683,300 @@ button {
     transition-duration: .01ms !important;
   }
 }
+
+/* DPL-203: editable primary invitation screen and live preview. */
+.invitation-card__illustration--library {
+  min-height: 250px;
+  background: #fff4f7;
+}
+
+.invitation-card__illustration--library::before,
+.invitation-card__illustration--library::after {
+  display: none;
+}
+
+.invitation-card__illustration--library img {
+  width: 100%;
+  height: 100%;
+  min-height: 250px;
+  object-fit: cover;
+  filter: none;
+}
+
+.invitation-card__screen-subtitle {
+  max-width: 430px;
+  margin: 13px auto 0;
+  color: #775969;
+  font-size: .9rem;
+  line-height: 1.52;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.invitation-card--preview-only .invitation-card__yes-button,
+.invitation-card--preview-only .invitation-card__no-button {
+  cursor: default;
+}
+
+.invitation-card__actions--preview-only {
+  pointer-events: none;
+}
+
+.builder-screen-editor {
+  display: grid;
+  padding: 26px;
+  gap: 24px;
+  border: 1px solid #eacfd9;
+  border-radius: 24px;
+  background: linear-gradient(150deg, #fff, #fff8fb);
+  box-shadow: 0 18px 44px rgb(92 37 61 / 7%);
+  grid-column: 1 / -1;
+}
+
+.builder-screen-editor__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.builder-screen-editor__heading p,
+.builder-screen-editor__heading h3,
+.builder-screen-editor__heading span {
+  margin: 0;
+}
+
+.builder-screen-editor__heading p {
+  color: #a94f70;
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.builder-screen-editor__heading h3 {
+  margin-top: 4px;
+  color: #4d2a3b;
+  font-size: 1.18rem;
+}
+
+.builder-screen-editor__heading > div > span {
+  display: block;
+  margin-top: 6px;
+  color: #80616f;
+  font-size: .8rem;
+  line-height: 1.5;
+}
+
+.builder-screen-editor__layout {
+  display: grid;
+  align-items: start;
+  gap: clamp(24px, 3vw, 42px);
+  grid-template-columns: minmax(0, 1.15fr) minmax(350px, .85fr);
+}
+
+.builder-screen-editor__form {
+  display: grid;
+  min-width: 0;
+  gap: 19px;
+}
+
+.builder-screen-editor__buttons {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.builder-screen-editor__preview {
+  position: sticky;
+  top: 18px;
+  display: grid;
+  min-width: 0;
+  padding: 20px;
+  gap: 15px;
+  border: 1px solid #ecd6de;
+  border-radius: 22px;
+  background: #fff;
+}
+
+.builder-screen-editor__preview-heading p,
+.builder-screen-editor__preview-heading h4 {
+  margin: 0;
+}
+
+.builder-screen-editor__preview-heading p {
+  color: #a85272;
+  font-size: .66rem;
+  font-weight: 900;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.builder-screen-editor__preview-heading h4 {
+  margin-top: 4px;
+  color: #4d2a3b;
+  font-size: 1rem;
+}
+
+.builder-phone-preview {
+  position: relative;
+  width: min(100%, 430px);
+  padding: 28px 12px 24px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 7px solid #362a34;
+  border-radius: 38px;
+  background: #f8edf2;
+  box-shadow: 0 22px 48px rgb(61 31 45 / 18%);
+}
+
+.builder-phone-preview__speaker {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  left: 50%;
+  width: 72px;
+  height: 8px;
+  border-radius: 999px;
+  background: #362a34;
+  transform: translateX(-50%);
+}
+
+.builder-phone-preview__home {
+  width: 72px;
+  height: 5px;
+  margin: 15px auto 0;
+  border-radius: 999px;
+  background: #9f9299;
+}
+
+.builder-phone-preview .invitation-card {
+  width: 100%;
+  border-radius: 24px;
+  box-shadow: none;
+}
+
+.builder-phone-preview .invitation-card__illustration,
+.builder-phone-preview .invitation-card__illustration--library img {
+  min-height: 190px;
+}
+
+.builder-phone-preview .invitation-card__body {
+  padding: 22px 18px 16px;
+}
+
+.builder-phone-preview .invitation-card__question {
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+}
+
+.builder-phone-preview .invitation-card__actions {
+  height: 205px;
+}
+
+.builder-image-library__card--selectable {
+  position: relative;
+  display: block;
+  cursor: pointer;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.builder-image-library__card--selectable:hover {
+  border-color: #dc7c9f;
+  box-shadow: 0 14px 30px rgb(180 66 105 / 14%);
+  transform: translateY(-2px);
+}
+
+.builder-image-library__card--selectable:focus-within {
+  outline: 4px solid rgb(210 70 118 / 22%);
+  outline-offset: 3px;
+}
+
+.builder-image-library__card--selected {
+  border: 3px solid #ec4f86;
+  box-shadow: 0 15px 34px rgb(211 54 105 / 20%);
+}
+
+.builder-image-library__selected-mark {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: #fff;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #e7477c;
+  box-shadow: 0 7px 16px rgb(124 34 66 / 22%);
+  font-size: .76rem;
+  font-weight: 900;
+  opacity: 0;
+  transform: scale(.75);
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+.builder-image-library__card--selected .builder-image-library__selected-mark {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.builder-image-library__caption {
+  display: grid;
+  padding: 13px 14px 15px;
+  gap: 4px;
+}
+
+@media (max-width: 980px) {
+  .builder-screen-editor__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .builder-screen-editor__preview {
+    position: static;
+  }
+
+  .builder-phone-preview {
+    width: min(100%, 470px);
+  }
+}
+
+@media (max-width: 620px) {
+  .builder-screen-editor {
+    padding: 20px 16px;
+    grid-column: auto;
+  }
+
+  .builder-screen-editor__heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .builder-screen-editor__heading .builder-autosave-badge {
+    align-self: flex-start;
+  }
+
+  .builder-screen-editor__buttons {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .builder-screen-editor__preview {
+    padding: 15px;
+  }
+
+  .builder-phone-preview {
+    padding-inline: 8px;
+    border-width: 5px;
+    border-radius: 30px;
+  }
+
+  .builder-phone-preview .invitation-card__illustration,
+  .builder-phone-preview .invitation-card__illustration--library img {
+    min-height: 160px;
+  }
+
+  .builder-phone-preview .invitation-card__actions {
+    height: 195px;
+  }
+}

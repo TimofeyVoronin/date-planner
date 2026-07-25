@@ -156,6 +156,7 @@ class InvitationScreen(models.Model):
     title = models.CharField(max_length=160)
     subtitle = models.CharField(max_length=500, blank=True, default="")
     button_text = models.CharField(max_length=80, blank=True, default="")
+    secondary_button_text = models.CharField(max_length=80, blank=True, default="")
     image_key = models.CharField(max_length=80, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

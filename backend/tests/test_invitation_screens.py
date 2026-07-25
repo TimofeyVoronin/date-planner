@@ -23,6 +23,7 @@ SCREEN_RESPONSE_FIELDS = {
     "title",
     "subtitle",
     "button_text",
+    "secondary_button_text",
     "image_key",
 }
 
@@ -70,6 +71,7 @@ def test_extended_invitation_creation_builds_complete_default_screen_set() -> No
         assert screen.title == defaults["title"]
         assert screen.subtitle == defaults["subtitle"]
         assert screen.button_text == defaults["button_text"]
+        assert screen.secondary_button_text == defaults["secondary_button_text"]
         assert screen.image_key == defaults["image_key"]
 
 

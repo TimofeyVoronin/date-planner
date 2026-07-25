@@ -2,12 +2,15 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import BuilderImageLibrary from '../../../../components/builder/BuilderImageLibrary.vue'
+import BuilderInvitationScreenEditor from '../../../../components/builder/BuilderInvitationScreenEditor.vue'
 import BuilderInvitationStep from '../../../../components/builder/BuilderInvitationStep.vue'
 import BuilderScreenConfigSummary from '../../../../components/builder/BuilderScreenConfigSummary.vue'
 import { useBuilderAutosave } from '../../../../composables/useBuilderAutosave'
+import { useInvitationScreenAutosave } from '../../../../composables/useInvitationScreenAutosave'
 import { useInvitationsApi } from '../../../../composables/useInvitationsApi'
 import { useManagementToken } from '../../../../composables/useManagementToken'
 import type { InvitationRecord } from '../../../../types/invitation'
+import type { InvitationImageKey } from '../../../../types/invitation-image'
 import type { InvitationScreenRecord } from '../../../../types/screen'
 import {
   BUILDER_STEPS,
@@ -26,7 +29,10 @@ import {
   parseInvitationApiError,
   type InvitationApiError,
 } from '../../../../utils/invitations'
-import { getInvitationScreensForBuilderStep } from '../../../../utils/screens'
+import {
+  getInvitationScreenByType,
+  getInvitationScreensForBuilderStep,
+} from '../../../../utils/screens'
 
 type BuilderPageState = 'blocked' | 'error' | 'loading' | 'missing-token' | 'ready'
 
@@ -52,6 +58,14 @@ const activeScreens = computed(() => (
 ))
 const activeScreenTypes = computed(() => (
   activeScreens.value.map(screen => screen.screen_type)
+))
+const primaryInvitationScreen = computed(() => (
+  getInvitationScreenByType(screens.value, 'invitation')
+))
+const summaryScreens = computed(() => (
+  currentStep.value === 1
+    ? activeScreens.value.filter(screen => screen.screen_type !== 'invitation')
+    : activeScreens.value
 ))
 const blockedPresentation = computed(() => {
   if (accessBlock.value === 'quick-mode') {
@@ -94,8 +108,51 @@ const autosave = useBuilderAutosave({
   },
 })
 
+const screenAutosave = useInvitationScreenAutosave({
+  async save(payload) {
+    const token = takeManagementToken()
+
+    if (!token) {
+      throw { statusCode: 401 }
+    }
+
+    return api.updateInvitationScreen(invitationId.value, token, payload)
+  },
+  onSaved(savedScreen) {
+    screens.value = screens.value.map(screen => (
+      screen.screen_type === savedScreen.screen_type ? savedScreen : screen
+    ))
+  },
+  onAuthorizationError(error) {
+    handleAuthorizationError(error)
+  },
+})
+
+const combinedAutosaveStatus = computed(() => {
+  const statuses = [autosave.status.value, screenAutosave.status.value]
+
+  if (statuses.includes('error')) {
+    return 'error' as const
+  }
+  if (statuses.includes('saving')) {
+    return 'saving' as const
+  }
+  if (statuses.includes('dirty')) {
+    return 'dirty' as const
+  }
+  if (statuses.includes('saved')) {
+    return 'saved' as const
+  }
+
+  return 'idle' as const
+})
+
+const hasUnsavedStepChanges = computed(() => (
+  autosave.hasUnsavedChanges.value || screenAutosave.hasUnsavedChanges.value
+))
+
 const autosavePresentation = computed(() => {
-  switch (autosave.status.value) {
+  switch (combinedAutosaveStatus.value) {
     case 'dirty':
       return { icon: '●', label: 'Изменения не сохранены', tone: 'dirty' }
     case 'saving':
@@ -117,7 +174,7 @@ useHead({
   ],
 })
 
-function handleAuthorizationError(error: InvitationApiError): void {
+function handleAuthorizationError(error: Pick<InvitationApiError, 'message' | 'status'>): void {
   clearManagementToken()
   canRetry.value = false
   errorMessage.value = error.message
@@ -166,13 +223,17 @@ async function restoreStepNavigation(): Promise<void> {
 }
 
 async function flushCurrentStep(): Promise<boolean> {
-  if (currentStep.value !== 1 || !autosave.hasUnsavedChanges.value) {
+  if (currentStep.value !== 1 || !hasUnsavedStepChanges.value) {
     return true
   }
 
-  const saved = await autosave.flush()
+  const screenSaved = await screenAutosave.flush()
+  if (!screenSaved) {
+    return false
+  }
 
-  return saved && pageState.value === 'ready'
+  const invitationSaved = await autosave.flush()
+  return invitationSaved && pageState.value === 'ready'
 }
 
 async function goToStep(step: BuilderStepNumber): Promise<void> {
@@ -241,6 +302,12 @@ async function loadBuilder(): Promise<void> {
 
     screens.value = nextScreens
     autosave.resetFromInvitation(nextInvitation)
+
+    const primaryScreen = getInvitationScreenByType(nextScreens, 'invitation')
+    if (!primaryScreen) {
+      throw new Error('Сервер не вернул основной экран приглашения.')
+    }
+    screenAutosave.resetFromScreen(primaryScreen)
     pageState.value = 'ready'
   }
   catch (error: unknown) {
@@ -256,8 +323,12 @@ async function loadBuilder(): Promise<void> {
   }
 }
 
+function selectInvitationImage(imageKey: InvitationImageKey): void {
+  screenAutosave.form.image_key = imageKey
+}
+
 function warnBeforeUnload(event: BeforeUnloadEvent): void {
-  if (!autosave.hasUnsavedChanges.value) {
+  if (!hasUnsavedStepChanges.value) {
     return
   }
 
@@ -299,11 +370,11 @@ onBeforeRouteUpdate(async (to) => {
 })
 
 onBeforeRouteLeave(async () => {
-  if (!autosave.hasUnsavedChanges.value) {
+  if (!hasUnsavedStepChanges.value) {
     return true
   }
 
-  if (await autosave.flush()) {
+  if (await flushCurrentStep()) {
     return true
   }
 
@@ -321,6 +392,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('beforeunload', warnBeforeUnload)
   autosave.dispose()
+  screenAutosave.dispose()
 })
 </script>
 
@@ -428,13 +500,28 @@ onUnmounted(() => {
               @retry="autosave.retry()"
               @save-now="autosave.flush()"
             />
-            <BuilderScreenConfigSummary :screens="activeScreens" />
+            <BuilderInvitationScreenEditor
+              v-if="primaryInvitationScreen"
+              v-model:title="screenAutosave.form.title"
+              v-model:subtitle="screenAutosave.form.subtitle"
+              v-model:button-text="screenAutosave.form.button_text"
+              v-model:secondary-button-text="screenAutosave.form.secondary_button_text"
+              v-model:image-key="screenAutosave.form.image_key"
+              :invitation="invitation"
+              :status="screenAutosave.status.value"
+              :error-message="screenAutosave.errorMessage.value"
+              :field-errors="screenAutosave.fieldErrors.value"
+              :is-dirty="screenAutosave.isDirty.value"
+              @retry="screenAutosave.retry()"
+              @save-now="screenAutosave.flush()"
+            />
+            <BuilderScreenConfigSummary v-if="summaryScreens.length" :screens="summaryScreens" />
           </template>
 
           <section v-else class="builder-stage__placeholder" aria-label="Содержимое будущего шага">
             <p>Каркас шага готов</p>
             <h3>Что появится здесь в следующих задачах</h3>
-            <BuilderScreenConfigSummary :screens="activeScreens" />
+            <BuilderScreenConfigSummary :screens="summaryScreens" />
             <ul>
               <li v-for="feature in activeStep.plannedFeatures" :key="feature">
                 <span aria-hidden="true">✓</span>
@@ -447,14 +534,19 @@ onUnmounted(() => {
             </p>
           </section>
 
-          <BuilderImageLibrary :screen-types="activeScreenTypes" />
+          <BuilderImageLibrary
+            :editable-screen-type="currentStep === 1 ? 'invitation' : null"
+            :screen-types="activeScreenTypes"
+            :selected-image-key="currentStep === 1 ? screenAutosave.form.image_key : null"
+            @select-image="selectInvitationImage"
+          />
         </article>
 
         <footer class="builder-actions" aria-label="Навигация по конструктору">
           <button
             type="button"
             class="builder-actions__secondary"
-            :disabled="previousStep === null || autosave.status.value === 'saving'"
+            :disabled="previousStep === null || combinedAutosaveStatus === 'saving'"
             @click="goToPreviousStep"
           >
             ← Назад
@@ -472,7 +564,7 @@ onUnmounted(() => {
             v-if="nextStep"
             type="button"
             class="builder-actions__primary"
-            :disabled="autosave.status.value === 'saving'"
+            :disabled="combinedAutosaveStatus === 'saving'"
             @click="goToNextStep"
           >
             Далее →
@@ -481,7 +573,7 @@ onUnmounted(() => {
             v-else
             type="button"
             class="builder-actions__primary"
-            :disabled="autosave.status.value === 'saving'"
+            :disabled="combinedAutosaveStatus === 'saving'"
             @click="finishBuilder"
           >
             Завершить обзор

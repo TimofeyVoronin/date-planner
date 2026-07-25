@@ -9,7 +9,7 @@ from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.common.models import Invitation
+from apps.common.models import Invitation, InvitationScreen
 
 pytestmark = pytest.mark.django_db
 
@@ -56,6 +56,7 @@ def test_create_invitation_persists_and_returns_public_fields() -> None:
     assert body["updated_at"]
     assert body["response_status"] == Invitation.ResponseStatus.PENDING
     assert body["responded_at"] is None
+    assert body["screens"] == []
     assert body["plan_options"] == []
     assert body["selected_option_id"] is None
     assert body["selected_at"] is None
@@ -82,6 +83,9 @@ def test_create_invitation_persists_explicit_extended_mode() -> None:
     assert body["published_at"] is None
     assert invitation.publication_status == Invitation.PublicationStatus.DRAFT
     assert invitation.published_at is None
+    assert len(body["screens"]) == 5
+    assert body["screens"][0]["screen_type"] == "invitation"
+    assert body["screens"][0]["secondary_button_text"] == "Нет"
 
     public_response = APIClient().get(f"/api/v1/invitations/{invitation.pk}/")
     assert public_response.status_code == status.HTTP_404_NOT_FOUND
@@ -136,6 +140,7 @@ def test_read_invitation_by_uuid() -> None:
         "published_at": invitation.published_at.isoformat().replace("+00:00", "Z"),
         "response_status": Invitation.ResponseStatus.PENDING,
         "responded_at": None,
+        "screens": [],
         "plan_options": [],
         "selected_option_id": None,
         "selected_at": None,
@@ -144,6 +149,27 @@ def test_read_invitation_by_uuid() -> None:
         "created_at": invitation.created_at.isoformat().replace("+00:00", "Z"),
         "updated_at": invitation.updated_at.isoformat().replace("+00:00", "Z"),
     }
+
+
+def test_quick_public_response_hides_preserved_extended_screen_rows() -> None:
+    """Switching back to quick mode does not leak dormant builder configuration."""
+    invitation = Invitation.objects.create(
+        **invitation_payload(),
+        creation_mode=Invitation.CreationMode.QUICK,
+    )
+    InvitationScreen.objects.create(
+        invitation=invitation,
+        screen_type=InvitationScreen.ScreenType.INVITATION,
+        title="Скрытый вопрос",
+        button_text="Да",
+        secondary_button_text="Нет",
+        image_key="invitation-default",
+    )
+
+    response = APIClient().get(f"/api/v1/invitations/{invitation.pk}/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["screens"] == []
 
 
 def test_server_now_input_is_ignored_and_never_persisted() -> None:

@@ -16,6 +16,7 @@ const invitationRecord: InvitationRecord = {
   published_at: null,
   response_status: 'pending',
   responded_at: null,
+  screens: [],
   plan_options: [],
   selected_option_id: null,
   selected_at: null,

@@ -1,3 +1,5 @@
+import type { InvitationScreenRecord } from './screen'
+
 export const INVITATION_NAME_MAX_LENGTH = 100
 export const INVITATION_MESSAGE_MAX_LENGTH = 1000
 export const PLAN_OPTION_PLACE_MAX_LENGTH = 200
@@ -57,6 +59,7 @@ export type InvitationRecord = InvitationCreatePayload & {
   published_at: string | null
   response_status: InvitationResponseStatus
   responded_at: string | null
+  screens: InvitationScreenRecord[]
   plan_options: InvitationPlanOption[]
   selected_option_id: string | null
   selected_at: string | null

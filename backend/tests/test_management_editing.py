@@ -192,6 +192,7 @@ def test_management_update_rejects_invalid_editable_values(
         "responded_at",
         "management_token",
         "management_token_hash",
+        "screens",
         "plan_options",
         "selected_option_id",
         "selected_at",

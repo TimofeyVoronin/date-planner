@@ -6,7 +6,11 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['utils/**/*.ts', 'composables/useBuilderAutosave.ts'],
+      include: [
+        'utils/**/*.ts',
+        'composables/useBuilderAutosave.ts',
+        'composables/useInvitationScreenAutosave.ts',
+      ],
       reporter: ['text', 'json-summary', 'html', 'lcov'],
       reportsDirectory: 'coverage',
       thresholds: {

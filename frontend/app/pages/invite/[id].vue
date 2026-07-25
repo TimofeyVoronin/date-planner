@@ -16,6 +16,7 @@ import {
   parseInvitationResponseApiError,
   refreshInvitationResponseAfterConflict,
 } from '../../../utils/invitations'
+import { getInvitationScreenByType } from '../../../utils/screens'
 import {
   findSelectedPlanOption,
   findUsableSelectedPlanOption,
@@ -49,6 +50,9 @@ const { currentTime, refreshCurrentTime, synchronizeServerTime } = useExpiryCloc
 const selectedPlanOption = computed(() => findSelectedPlanOption(
   invitation.value?.plan_options ?? [],
   invitation.value?.selected_option_id ?? null,
+))
+const invitationScreen = computed(() => (
+  getInvitationScreenByType(invitation.value?.screens ?? [], 'invitation')
 ))
 
 useHead({
@@ -309,6 +313,7 @@ onMounted(loadInvitation)
           :message="invitation.message"
           :planning-context="true"
           :recipient-name="invitation.recipient_name"
+          :screen="invitationScreen"
           @answered="saveResponse"
         />
         <div
