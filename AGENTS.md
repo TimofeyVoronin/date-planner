@@ -14,6 +14,7 @@ These rules apply to the entire repository.
 - Keep the built-in image catalog local, deterministic, accessible, and keyed by stable values that remain compatible with the owning screen type. Do not add third-party image URLs to invitation screen configuration.
 - Treat screen configuration as a separate autosaved resource: validate image compatibility on both sides, reject unknown fields, keep exact PATCH retries idempotent, and expose only recipient-safe screen fields publicly.
 - Keep the invitation and acceptance screen editors independent: each owns its autosave state and image selection, while navigation must flush both resources before leaving the first builder step.
+- Keep builder preview state client-only and independent from autosave: it may use demonstration dates and activities, but must never send them to the API or read the management token. Sync its default screen to the builder step while preserving direct user interaction within that step.
 - Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 
