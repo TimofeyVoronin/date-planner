@@ -74,6 +74,18 @@ describe('invitation screen configuration', () => {
     ])).toThrow(/title/i)
   })
 
+  it('rejects an unknown or incompatible image key', () => {
+    expect(() => normalizeInvitationScreens([
+      { ...screens[0], image_key: 'unknown-image' },
+      ...screens.slice(1),
+    ])).toThrow(/неизвестное изображение/i)
+
+    expect(() => normalizeInvitationScreens([
+      { ...screens[0], image_key: 'final-default' },
+      ...screens.slice(1),
+    ])).toThrow(/не подходит/i)
+  })
+
   it('rejects missing and duplicate screen configurations', () => {
     expect(() => normalizeInvitationScreens(screens.slice(0, 4))).toThrow(/отсутствуют/i)
     expect(() => normalizeInvitationScreens([

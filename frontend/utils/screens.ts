@@ -4,6 +4,7 @@ import {
   type InvitationScreenType,
 } from '../types/screen'
 import type { BuilderStepNumber } from './builder'
+import { isInvitationImageCompatible, isInvitationImageKey } from './invitationImages'
 
 export type InvitationScreenPresentation = {
   icon: string
@@ -88,12 +89,20 @@ export function normalizeInvitationScreens(payload: unknown): InvitationScreenRe
       throw new Error('Сервер вернул неизвестный тип экрана приглашения.')
     }
 
+    const imageKey = readStringField(item, 'image_key')
+    if (!isInvitationImageKey(imageKey)) {
+      throw new Error('Сервер вернул неизвестное изображение экрана приглашения.')
+    }
+    if (!isInvitationImageCompatible(imageKey, item.screen_type)) {
+      throw new Error('Изображение не подходит для указанного экрана приглашения.')
+    }
+
     return {
       screen_type: item.screen_type,
       title: readStringField(item, 'title'),
       subtitle: readStringField(item, 'subtitle'),
       button_text: readStringField(item, 'button_text'),
-      image_key: readStringField(item, 'image_key'),
+      image_key: imageKey,
     }
   })
 

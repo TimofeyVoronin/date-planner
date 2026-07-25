@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import BuilderImageLibrary from '../../../../components/builder/BuilderImageLibrary.vue'
 import BuilderInvitationStep from '../../../../components/builder/BuilderInvitationStep.vue'
 import BuilderScreenConfigSummary from '../../../../components/builder/BuilderScreenConfigSummary.vue'
 import { useBuilderAutosave } from '../../../../composables/useBuilderAutosave'
@@ -48,6 +49,9 @@ const previousStep = computed(() => getPreviousBuilderStep(currentStep.value))
 const nextStep = computed(() => getNextBuilderStep(currentStep.value))
 const activeScreens = computed(() => (
   getInvitationScreensForBuilderStep(screens.value, currentStep.value)
+))
+const activeScreenTypes = computed(() => (
+  activeScreens.value.map(screen => screen.screen_type)
 ))
 const blockedPresentation = computed(() => {
   if (accessBlock.value === 'quick-mode') {
@@ -442,6 +446,8 @@ onUnmounted(() => {
               отдельными проверяемыми итерациями.
             </p>
           </section>
+
+          <BuilderImageLibrary :screen-types="activeScreenTypes" />
         </article>
 
         <footer class="builder-actions" aria-label="Навигация по конструктору">

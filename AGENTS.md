@@ -11,6 +11,7 @@ These rules apply to the entire repository.
 - Keep the builder restricted to `extended` invitations in `draft` state. Store navigation state in the route query and never place the management token in query parameters or path segments.
 - Keep builder autosave sequential and idempotent: debounce ordinary edits, flush before navigation, send only the minimal PATCH, and preserve edits made while a request is in flight.
 - Keep extended invitation screens complete and unique: exactly one configuration per supported screen type, stable API ordering, and no screen rows for newly created quick invitations.
+- Keep the built-in image catalog local, deterministic, accessible, and keyed by stable values that remain compatible with the owning screen type. Do not add third-party image URLs to invitation screen configuration.
 - Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 
