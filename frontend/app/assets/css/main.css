@@ -466,6 +466,34 @@ button {
   line-height: 1.55;
 }
 
+.invitation-card__continue-button {
+  min-height: 50px;
+  padding: 13px 26px;
+  color: #fff;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #e7477c, #c93168);
+  box-shadow: 0 11px 24px rgb(183 49 96 / 22%);
+  font-weight: 850;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+
+.invitation-card__continue-button:hover {
+  box-shadow: 0 14px 28px rgb(183 49 96 / 28%);
+  transform: translateY(-1px);
+}
+
+.invitation-card--preview-only .invitation-card__continue-button {
+  cursor: default;
+  pointer-events: none;
+}
+
+.public-invitation-followup {
+  display: grid;
+  width: 100%;
+  outline: none;
+  scroll-margin-top: 24px;
+}
+
 .invitation-card__reset-button {
   min-height: 48px;
   padding: 12px 24px;

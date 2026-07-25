@@ -147,6 +147,34 @@ describe('invitation screen configuration', () => {
     expect(getInvitationScreenByType(screens, 'final')?.screen_type).toBe('final')
   })
 
+  it('builds and validates the acceptance screen without a decline action', () => {
+    const screen = screens[1]!
+    const form = createInvitationScreenEditForm(screen)
+
+    form.title = '  Ты правда согласился?  '
+    form.button_text = '  Продолжить  '
+    form.secondary_button_text = 'Это поле не относится ко второму экрану'
+    form.image_key = 'acceptance-fireworks'
+
+    expect(buildInvitationScreenUpdatePayload(form, screen)).toEqual({
+      title: 'Ты правда согласился?',
+      button_text: 'Продолжить',
+      image_key: 'acceptance-fireworks',
+    })
+    expect(validateInvitationScreenEditForm({
+      ...form,
+      button_text: '',
+      image_key: 'invitation-default',
+    }, 'acceptance')).toMatchObject({
+      button_text: expect.any(String),
+      image_key: expect.any(String),
+    })
+    expect(validateInvitationScreenEditForm({
+      ...form,
+      secondary_button_text: '',
+    }, 'acceptance').secondary_button_text).toBeUndefined()
+  })
+
   it('validates required actions, limits, and compatible image choice', () => {
     const screen = screens[0]!
 

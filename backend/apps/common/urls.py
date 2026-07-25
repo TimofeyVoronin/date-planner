@@ -6,6 +6,7 @@ from apps.common.confirmation_views import InvitationConfirmationView
 from apps.common.planning_views import InvitationPlanOptionsView, InvitationSelectionView
 from apps.common.publication_views import InvitationPublicationView
 from apps.common.screen_views import (
+    InvitationAcceptanceScreenUpdateView,
     InvitationPrimaryScreenUpdateView,
     InvitationScreenListView,
 )
@@ -41,6 +42,11 @@ urlpatterns = [
         "invitations/<uuid:pk>/screens/invitation/",
         InvitationPrimaryScreenUpdateView.as_view(),
         name="invitation-primary-screen-update",
+    ),
+    path(
+        "invitations/<uuid:pk>/screens/acceptance/",
+        InvitationAcceptanceScreenUpdateView.as_view(),
+        name="invitation-acceptance-screen-update",
     ),
     path(
         "invitations/<uuid:pk>/publish/",

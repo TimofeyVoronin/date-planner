@@ -82,10 +82,11 @@ export function useInvitationsApi() {
   async function updateInvitationScreen(
     id: string,
     token: string,
+    screenType: 'acceptance' | 'invitation',
     payload: InvitationScreenUpdatePayload,
   ): Promise<InvitationScreenRecord> {
     const response = await $fetch<unknown>(
-      `/api/v1/invitations/${encodeURIComponent(id)}/screens/invitation/`,
+      `/api/v1/invitations/${encodeURIComponent(id)}/screens/${screenType}/`,
       {
         baseURL,
         method: 'PATCH',

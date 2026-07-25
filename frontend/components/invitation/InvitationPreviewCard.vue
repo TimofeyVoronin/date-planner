@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, useId, watch } from 'vue'
 import { RUNAWAY_ATTEMPT_LIMIT, useRunawayButton } from '../../composables/useRunawayButton'
 import type {
   FinalInvitationResponseStatus,
@@ -12,6 +12,7 @@ import { invitationStatusToAnswer } from '../../utils/invitations'
 type Answer = FinalInvitationResponseStatus | null
 
 type Props = {
+  acceptanceScreen?: InvitationScreenEditForm | null
   allowReset?: boolean
   authorName?: string
   initialStatus?: InvitationResponseStatus
@@ -23,6 +24,7 @@ type Props = {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  acceptanceScreen: null,
   allowReset: true,
   authorName: '',
   initialStatus: 'pending',
@@ -34,14 +36,24 @@ const props = withDefaults(defineProps<Props>(), {
 })
 const emit = defineEmits<{
   answered: [status: FinalInvitationResponseStatus]
+  continue: []
 }>()
 
 const config = useRuntimeConfig()
 const answer = ref<Answer>(invitationStatusToAnswer(props.initialStatus ?? 'pending'))
 const secondChance = ref(false)
 const resultHeadingRef = ref<HTMLElement | null>(null)
+const componentId = useId()
+const questionId = `${componentId}-question`
+const resultId = `${componentId}-result`
+const runawayHelpId = `${componentId}-runaway-help`
+const activeScreen = computed(() => (
+  answer.value === 'accepted' && props.acceptanceScreen
+    ? props.acceptanceScreen
+    : props.screen
+))
 const illustration = computed(() => (
-  props.screen ? getInvitationImageByKey(props.screen.image_key) : undefined
+  activeScreen.value ? getInvitationImageByKey(activeScreen.value.image_key) : undefined
 ))
 const illustrationUrl = computed(() => (
   illustration.value
@@ -52,6 +64,11 @@ const invitationTitle = computed(() => props.screen?.title.trim() ?? '')
 const invitationSubtitle = computed(() => props.screen?.subtitle.trim() ?? '')
 const yesButtonText = computed(() => props.screen?.button_text.trim() || 'Да! 😍')
 const noButtonText = computed(() => props.screen?.secondary_button_text.trim() || 'Нет')
+const acceptanceTitle = computed(() => props.acceptanceScreen?.title.trim() ?? '')
+const acceptanceSubtitle = computed(() => props.acceptanceScreen?.subtitle.trim() ?? '')
+const acceptanceButtonText = computed(() => (
+  props.acceptanceScreen?.button_text.trim() || 'Продолжить'
+))
 
 const {
   attempts,
@@ -87,6 +104,14 @@ function acceptInvitation(): void {
 
 function declineInvitation(): void {
   chooseAnswer('declined')
+}
+
+function continuePlanning(): void {
+  if (props.previewOnly) {
+    return
+  }
+
+  emit('continue')
 }
 
 function handleNoPointerEnter(event: PointerEvent): void {
@@ -171,7 +196,7 @@ watch(
   <article
     class="invitation-card"
     :class="{ 'invitation-card--preview-only': previewOnly }"
-    :aria-labelledby="answer === null ? 'invitation-question' : 'invitation-result'"
+    :aria-labelledby="answer === null ? questionId : resultId"
   >
     <div
       class="invitation-card__illustration"
@@ -191,7 +216,7 @@ watch(
     <div v-if="answer === null" class="invitation-card__body">
       <p class="invitation-card__note">Для тебя с любовью</p>
       <h2
-        id="invitation-question"
+        :id="questionId"
         class="invitation-card__question"
         :class="{ 'invitation-card__question--second-chance': secondChance }"
         aria-live="polite"
@@ -232,6 +257,7 @@ watch(
           ref="yesButtonRef"
           class="invitation-card__yes-button"
           type="button"
+          :tabindex="previewOnly ? -1 : undefined"
           :aria-label="previewOnly ? `Предпросмотр кнопки: ${yesButtonText}` : yesButtonText"
           :style="yesButtonStyle"
           @click="acceptInvitation"
@@ -244,12 +270,13 @@ watch(
           ref="noButtonRef"
           class="invitation-card__no-button"
           type="button"
+          :tabindex="previewOnly ? -1 : undefined"
           :aria-label="previewOnly
             ? `Предпросмотр кнопки: ${noButtonText}`
             : secondChance
               ? `${noButtonText}, всё же отклонить приглашение`
               : `${noButtonText}, отклонить приглашение`"
-          :aria-describedby="previewOnly ? undefined : 'runaway-help'"
+          :aria-describedby="previewOnly ? undefined : runawayHelpId"
           :style="noButtonStyle"
           @pointerenter="handleNoPointerEnter"
           @click="handleNoClick"
@@ -257,7 +284,7 @@ watch(
           {{ noButtonText }}
         </button>
 
-        <p v-if="!previewOnly" id="runaway-help" class="sr-only">
+        <p v-if="!previewOnly" :id="runawayHelpId" class="sr-only">
           Для мыши и сенсорного экрана кнопка может переместиться до пяти раз.
           После пятой попытки появится повторный вопрос. С клавиатуры ответ доступен сразу.
         </p>
@@ -272,13 +299,13 @@ watch(
         {{ answer === 'accepted' ? '💘' : '🌷' }}
       </span>
       <h2
-        id="invitation-result"
+        :id="resultId"
         ref="resultHeadingRef"
         class="invitation-card__result-title"
         tabindex="-1"
       >
         <template v-if="answer === 'accepted'">
-          Ура! Кажется, свиданию быть 💘
+          {{ acceptanceTitle || 'Ура! Кажется, свиданию быть 💘' }}
         </template>
         <template v-else>
           Очень жаль 😢
@@ -286,11 +313,24 @@ watch(
       </h2>
       <p class="invitation-card__result-copy">
         {{ answer === 'accepted'
-          ? props.planningContext
-            ? 'Продолжение ниже: выбери вариант или посмотри уже подтверждённый план.'
-            : 'Похоже, впереди прекрасная встреча.'
+          ? acceptanceSubtitle
+            || (props.planningContext
+              ? 'Продолжение ниже: выбери вариант или посмотри уже подтверждённый план.'
+              : 'Похоже, впереди прекрасная встреча.')
           : 'Спланируем в другой раз 😉' }}
       </p>
+      <button
+        v-if="answer === 'accepted' && props.acceptanceScreen"
+        class="invitation-card__continue-button"
+        type="button"
+        :tabindex="previewOnly ? -1 : undefined"
+        :aria-label="previewOnly
+          ? `Предпросмотр кнопки: ${acceptanceButtonText}`
+          : acceptanceButtonText"
+        @click="continuePlanning"
+      >
+        {{ acceptanceButtonText }}
+      </button>
       <button
         v-if="props.allowReset"
         class="invitation-card__reset-button"

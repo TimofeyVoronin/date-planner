@@ -124,8 +124,11 @@ export function useInvitationScreenAutosave(
       return false
     }
 
-    const validationErrors = validateInvitationScreenEditForm(form)
-    if (hasInvitationScreenValidationErrors(validationErrors)) {
+    const validationErrors = validateInvitationScreenEditForm(
+      form,
+      screen.screen_type,
+    )
+    if (hasInvitationScreenValidationErrors(validationErrors, screen.screen_type)) {
       fieldErrors.value = validationErrors
       errorMessage.value = 'Проверь заполненные поля экрана.'
       status.value = 'error'

@@ -10,16 +10,16 @@ import { getInvitationScreenPresentation } from '../../utils/screens'
 import BuilderImageOption from './BuilderImageOption.vue'
 
 const props = withDefaults(defineProps<{
-  editableScreenType?: InvitationScreenType | null
+  editableScreenTypes?: readonly InvitationScreenType[]
   screenTypes: readonly InvitationScreenType[]
-  selectedImageKey?: InvitationImageKey | null
+  selectedImageKeys?: Partial<Record<InvitationScreenType, InvitationImageKey>>
 }>(), {
-  editableScreenType: null,
-  selectedImageKey: null,
+  editableScreenTypes: () => [],
+  selectedImageKeys: () => ({}),
 })
 
 const emit = defineEmits<{
-  selectImage: [imageKey: InvitationImageKey]
+  selectImage: [screenType: InvitationScreenType, imageKey: InvitationImageKey]
 }>()
 
 const config = useRuntimeConfig()
@@ -29,7 +29,7 @@ const imagesByScreen = computed(() => props.screenTypes.map(screenType => ({
   images: getInvitationImagesForScreens([screenType]),
 })))
 const hasSelectableGroup = computed(() => (
-  props.editableScreenType != null && props.screenTypes.includes(props.editableScreenType)
+  props.screenTypes.some(screenType => props.editableScreenTypes.includes(screenType))
 ))
 
 function imageUrl(assetPath: string): string {
@@ -49,8 +49,8 @@ function imageUrl(assetPath: string): string {
 
     <p class="builder-image-library__description">
       <template v-if="hasSelectableGroup">
-        Выбери иллюстрацию первого экрана. Розовая рамка показывает вариант, который будет сохранён
-        и показан получателю.
+        Выбери отдельную иллюстрацию для каждого редактируемого экрана. Розовая рамка показывает
+        вариант, который будет сохранён и показан получателю.
       </template>
       <template v-else>
         Все изображения хранятся внутри проекта, не загружаются со сторонних сайтов и уже имеют
@@ -72,7 +72,9 @@ function imageUrl(assetPath: string): string {
           </h4>
           <p>
             {{ group.presentation.description }}
-            <strong v-if="group.screenType === editableScreenType"> Выбери один вариант.</strong>
+            <strong v-if="editableScreenTypes.includes(group.screenType)">
+              Выбери один вариант.
+            </strong>
           </p>
         </div>
       </div>
@@ -83,9 +85,10 @@ function imageUrl(assetPath: string): string {
           :key="image.key"
           :image="image"
           :image-url="imageUrl(image.assetPath)"
-          :selectable="group.screenType === editableScreenType"
-          :selected="image.key === selectedImageKey"
-          @select="emit('selectImage', $event)"
+          :input-name="`builder_screen_image_${group.screenType}`"
+          :selectable="editableScreenTypes.includes(group.screenType)"
+          :selected="image.key === selectedImageKeys[group.screenType]"
+          @select="emit('selectImage', group.screenType, $event)"
         />
       </div>
     </section>
