@@ -53,6 +53,11 @@ export type PlanSelectionScreenPresentation = {
   title: string
 }
 
+export type PlanRecoveryPresentation = {
+  description: string
+  eyebrow: string
+}
+
 const DEFAULT_PLAN_SELECTION_SCREEN: PlanSelectionScreenPresentation = {
   buttonText: 'Сохранить выбор',
   imageKey: 'date-selection-default',
@@ -62,6 +67,29 @@ const DEFAULT_PLAN_SELECTION_SCREEN: PlanSelectionScreenPresentation = {
 
 function padDatePart(value: number): string {
   return String(value).padStart(2, '0')
+}
+
+export function getPlanRecoveryPresentation(
+  planningMode: InvitationPlanningMode,
+): PlanRecoveryPresentation {
+  if (planningMode === 'before_acceptance') {
+    return {
+      eyebrow: 'Опубликованный набор устарел',
+      description: (
+        'Это единственное состояние, в котором опубликованные заранее даты можно заменить. '
+        + 'Сохранение сбросит устаревший выбор, но не изменит само приглашение и его режим '
+        + 'планирования.'
+      ),
+    }
+  }
+
+  return {
+    eyebrow: 'Нужно обновить план',
+    description: (
+      'Исправь даты или предложи новый набор ниже. Сохранение заменит устаревшие варианты '
+      + 'и сбросит прежний выбор, чтобы получатель мог выбрать снова.'
+    ),
+  }
 }
 
 export function buildPlanConfirmationPayload(optionId: string): PlanConfirmationPayload {
