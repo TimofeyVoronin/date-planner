@@ -11,6 +11,7 @@ from rest_framework import serializers
 
 from apps.common.models import (
     INVITATION_ANSWER_STATUS_CHOICES,
+    ActivityOption,
     Invitation,
     InvitationPlanOption,
     InvitationScreen,
@@ -148,6 +149,114 @@ class InvitationPlanOptionSerializer(serializers.ModelSerializer):
         model = InvitationPlanOption
         fields = ("id", "starts_at", "place", "comment", "position")
         read_only_fields = fields
+
+
+class ActivityOptionSerializer(serializers.ModelSerializer):
+    """Expose one persisted activity option in stable author order."""
+
+    class Meta:
+        """Keep future commercial metadata out of the first public contract."""
+
+        model = ActivityOption
+        fields = ("id", "title", "description", "image_key", "place", "position")
+        read_only_fields = fields
+
+
+class ActivityOptionInputSerializer(serializers.Serializer):
+    """Validate one activity idea accepted by the first management API."""
+
+    editable_fields = frozenset(("title", "description", "image_key", "place"))
+
+    title = serializers.CharField(max_length=120, allow_blank=False, trim_whitespace=True)
+    description = serializers.CharField(
+        max_length=500,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    image_key = serializers.RegexField(
+        regex=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        max_length=80,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+        error_messages={
+            "invalid": "Use a stable local image key made of lowercase words and hyphens."
+        },
+    )
+    place = serializers.CharField(
+        max_length=200,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+
+    def to_internal_value(self, data: object) -> dict[str, object]:
+        """Reject internal and future fields instead of silently ignoring them."""
+        if isinstance(data, Mapping):
+            unsupported_fields = sorted(set(data) - self.editable_fields)
+            if unsupported_fields:
+                raise serializers.ValidationError(
+                    {
+                        field: ["This field is not part of the activity API yet."]
+                        for field in unsupported_fields
+                    }
+                )
+        return super().to_internal_value(data)
+
+
+class PositionalErrorListField(serializers.ListField):
+    """Keep nested validation errors aligned with their input positions."""
+
+    def run_child_validation(self, data: list[object]) -> list[object]:
+        """Return list-shaped errors while retaining ListField schema constraints."""
+        result: list[object] = []
+        errors: list[object] = []
+        has_errors = False
+
+        for item in data:
+            try:
+                result.append(self.child.run_validation(item))
+            except serializers.ValidationError as exc:
+                errors.append(exc.detail)
+                has_errors = True
+            else:
+                errors.append({})
+
+        if has_errors:
+            raise serializers.ValidationError(errors)
+        return result
+
+
+class ActivityOptionsUpdateSerializer(serializers.Serializer):
+    """Validate an atomic replacement of three to six ordered activities."""
+
+    editable_fields = frozenset(("options",))
+
+    options = PositionalErrorListField(
+        child=ActivityOptionInputSerializer(),
+        min_length=3,
+        max_length=6,
+    )
+
+    def to_internal_value(self, data: object) -> dict[str, object]:
+        """Reject unknown collection fields before validating nested options."""
+        if isinstance(data, Mapping):
+            unsupported_fields = sorted(set(data) - self.editable_fields)
+            if unsupported_fields:
+                raise serializers.ValidationError(
+                    {field: ["This field is not supported."] for field in unsupported_fields}
+                )
+        return super().to_internal_value(data)
+
+
+class ActivityOptionsResponseSerializer(serializers.Serializer):
+    """Document the ordered management collection response."""
+
+    options = ActivityOptionSerializer(many=True, read_only=True)
 
 
 class InvitationSerializer(serializers.ModelSerializer):
