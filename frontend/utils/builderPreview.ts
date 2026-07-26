@@ -1,4 +1,5 @@
 import type { BuilderStepNumber } from './builder'
+import type { ActivityOptionDraft } from './activities'
 import type { PlanOptionDraft } from './planning'
 import {
   BUILDER_PREVIEW_DEVICE_IDS,
@@ -73,16 +74,19 @@ export const BUILDER_PREVIEW_ACTIVITIES: readonly BuilderPreviewDemoOption[] = [
     id: 'activity-walk',
     label: 'Прогулка и десерт',
     description: 'Неспешная прогулка, а затем любимое кафе',
+    imageKey: 'activity-selection-default',
   },
   {
     id: 'activity-movie',
     label: 'Кино и обсуждение',
     description: 'Выбираем фильм и продолжаем вечер за кофе',
+    imageKey: 'activity-movie',
   },
   {
     id: 'activity-surprise',
     label: 'Маленький сюрприз',
     description: 'План узнает только получатель приглашения',
+    imageKey: 'activity-coffee',
   },
 ]
 
@@ -101,6 +105,24 @@ export function buildBuilderPreviewDateOptions(
       id: `draft-date-${index + 1}`,
       label,
       description: comment ? `${place} — ${comment}` : place,
+    }
+  })
+}
+
+export function buildBuilderPreviewActivityOptions(
+  drafts: ActivityOptionDraft[],
+): BuilderPreviewDemoOption[] {
+  return drafts.map((draft, index) => {
+    const title = draft.title.trim() || 'Название активности пока не указано'
+    const place = draft.place.trim()
+    const description = draft.description.trim()
+    const details = [place, description].filter(Boolean).join(' — ')
+
+    return {
+      id: `draft-activity-${index + 1}`,
+      label: title,
+      description: details || 'Описание пока не указано',
+      imageKey: draft.imageKey,
     }
   })
 }

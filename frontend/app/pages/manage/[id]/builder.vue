@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import ActivityOptionsEditor from '../../../../components/activities/ActivityOptionsEditor.vue'
 import BuilderAcceptanceScreenEditor from '../../../../components/builder/BuilderAcceptanceScreenEditor.vue'
 import BuilderImageLibrary from '../../../../components/builder/BuilderImageLibrary.vue'
 import BuilderInvitationScreenEditor from '../../../../components/builder/BuilderInvitationScreenEditor.vue'
@@ -14,6 +15,10 @@ import { useExpiryClock } from '../../../../composables/useExpiryClock'
 import { useInvitationScreenAutosave } from '../../../../composables/useInvitationScreenAutosave'
 import { useInvitationsApi } from '../../../../composables/useInvitationsApi'
 import { useManagementToken } from '../../../../composables/useManagementToken'
+import type {
+  ActivityOptionRecord,
+  ActivityOptionsPayload,
+} from '../../../../types/activity'
 import type { BuilderPreviewScreen } from '../../../../types/builder-preview'
 import type {
   InvitationPlanOption,
@@ -27,7 +32,10 @@ import type {
   InvitationScreenRecord,
   InvitationScreenType,
 } from '../../../../types/screen'
-import { buildBuilderPreviewDateOptions } from '../../../../utils/builderPreview'
+import {
+  buildBuilderPreviewActivityOptions,
+  buildBuilderPreviewDateOptions,
+} from '../../../../utils/builderPreview'
 import {
   BUILDER_STEPS,
   builderStepSessionKey,
@@ -40,6 +48,11 @@ import {
   type BuilderAccessBlock,
   type BuilderStepNumber,
 } from '../../../../utils/builder'
+import {
+  activityStepRequiresOptionSave,
+  parseActivityOptionsApiError,
+  type ActivityOptionDraft,
+} from '../../../../utils/activities'
 import {
   isInvitationId,
   parseInvitationApiError,
@@ -77,6 +90,12 @@ const planSaveState = ref<'error' | 'idle' | 'saving' | 'success'>('idle')
 const planSaveError = ref('')
 const planEditorDirty = ref(false)
 const planOptionsEditor = ref<InstanceType<typeof PlanOptionsEditor> | null>(null)
+const builderActivityOptions = ref<ActivityOptionRecord[]>([])
+const previewActivityDrafts = ref<ActivityOptionDraft[]>([])
+const activitySaveState = ref<'error' | 'idle' | 'saving' | 'success'>('idle')
+const activitySaveError = ref('')
+const activityEditorDirty = ref(false)
+const activityOptionsEditor = ref<InstanceType<typeof ActivityOptionsEditor> | null>(null)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const managementPath = computed(() => `/manage/${encodeURIComponent(invitationId.value)}`)
 const { clearManagementToken, takeManagementToken } = useManagementToken(invitationId)
@@ -263,6 +282,9 @@ const previewDateOptions = computed(() => (
     ? buildBuilderPreviewDateOptions(previewPlanDrafts.value)
     : []
 ))
+const previewActivityOptions = computed(() => (
+  buildBuilderPreviewActivityOptions(previewActivityDrafts.value)
+))
 const combinedAutosaveStatus = computed(() => {
   const statuses = [
     autosave.status.value,
@@ -281,6 +303,21 @@ const combinedAutosaveStatus = computed(() => {
       statuses.push('dirty')
     }
     else if (planSaveState.value === 'success') {
+      statuses.push('saved')
+    }
+  }
+
+  if (currentStep.value === 3) {
+    if (activitySaveState.value === 'error') {
+      statuses.push('error')
+    }
+    else if (activitySaveState.value === 'saving') {
+      statuses.push('saving')
+    }
+    else if (activityEditorDirty.value) {
+      statuses.push('dirty')
+    }
+    else if (activitySaveState.value === 'success') {
       statuses.push('saved')
     }
   }
@@ -309,6 +346,10 @@ const hasUnsavedStepChanges = computed(() => (
     currentStep.value === 2
     && autosave.form.planning_mode === 'before_acceptance'
     && (planEditorDirty.value || planSaveState.value === 'saving')
+  )
+  || (
+    currentStep.value === 3
+    && (activityEditorDirty.value || activitySaveState.value === 'saving')
   )
 ))
 
@@ -416,6 +457,10 @@ async function flushCurrentStep(requireCompleteStep = false): Promise<boolean> {
     }
   }
 
+  if (currentStep.value === 3) {
+    return flushActivityOptions(requireCompleteStep)
+  }
+
   return true
 }
 
@@ -462,6 +507,11 @@ async function loadBuilder(): Promise<void> {
   planEditorDirty.value = false
   planSaveState.value = 'idle'
   planSaveError.value = ''
+  builderActivityOptions.value = []
+  previewActivityDrafts.value = []
+  activityEditorDirty.value = false
+  activitySaveState.value = 'idle'
+  activitySaveError.value = ''
 
   if (!isInvitationId(invitationId.value)) {
     errorMessage.value = 'Проверь адрес секретной ссылки.'
@@ -490,9 +540,13 @@ async function loadBuilder(): Promise<void> {
       return
     }
 
-    const nextScreens = await api.getInvitationScreens(invitationId.value, token)
+    const [nextScreens, nextActivityOptions] = await Promise.all([
+      api.getInvitationScreens(invitationId.value, token),
+      api.getActivityOptions(invitationId.value, token),
+    ])
 
     screens.value = nextScreens
+    builderActivityOptions.value = nextActivityOptions
     autosave.resetFromInvitation(nextInvitation)
 
     const primaryScreen = getInvitationScreenByType(nextScreens, 'invitation')
@@ -631,6 +685,94 @@ async function flushPlanningOptions(requireCompleteStep: boolean): Promise<boole
 
   const payload = planOptionsEditor.value?.preparePayload()
   return payload ? persistPlanningOptions(payload) : false
+}
+
+let activeActivitySave: Promise<boolean> | null = null
+
+function handleActivityDirtyChange(isDirty: boolean): void {
+  activityEditorDirty.value = isDirty
+}
+
+function handleActivityEdited(): void {
+  activitySaveState.value = 'idle'
+  activitySaveError.value = ''
+}
+
+function handleActivityDraftsChange(drafts: ActivityOptionDraft[]): void {
+  previewActivityDrafts.value = drafts
+}
+
+async function persistActivityOptions(payload: ActivityOptionsPayload): Promise<boolean> {
+  if (activeActivitySave) {
+    return activeActivitySave
+  }
+
+  const token = takeManagementToken()
+
+  if (!token) {
+    pageState.value = 'missing-token'
+    return false
+  }
+
+  activitySaveState.value = 'saving'
+  activitySaveError.value = ''
+
+  const request = api.saveActivityOptions(invitationId.value, token, payload)
+    .then((nextOptions) => {
+      builderActivityOptions.value = nextOptions
+      activityEditorDirty.value = false
+      activitySaveState.value = 'success'
+      return true
+    })
+    .catch((error: unknown) => {
+      const parsedError = parseActivityOptionsApiError(error)
+
+      if (parsedError.status === 401 || parsedError.status === 403) {
+        handleAuthorizationError(parsedError)
+        return false
+      }
+
+      activitySaveError.value = parsedError.message
+      activitySaveState.value = 'error'
+      activityOptionsEditor.value?.applyServerErrors(
+        parsedError.formError,
+        parsedError.optionErrors,
+      )
+      return false
+    })
+
+  activeActivitySave = request
+
+  try {
+    return await request
+  }
+  finally {
+    activeActivitySave = null
+  }
+}
+
+function saveActivityOptions(payload: ActivityOptionsPayload): void {
+  void persistActivityOptions(payload)
+}
+
+async function flushActivityOptions(requireCompleteStep: boolean): Promise<boolean> {
+  if (activeActivitySave) {
+    const saved = await activeActivitySave
+    if (!saved) {
+      return false
+    }
+  }
+
+  if (!activityStepRequiresOptionSave(
+    activityEditorDirty.value,
+    builderActivityOptions.value.length,
+    requireCompleteStep,
+  )) {
+    return true
+  }
+
+  const payload = activityOptionsEditor.value?.preparePayload()
+  return payload ? persistActivityOptions(payload) : false
 }
 
 function selectScreenImage(
@@ -894,6 +1036,20 @@ onUnmounted(() => {
                 </section>
               </template>
 
+              <template v-else-if="currentStep === 3">
+                <ActivityOptionsEditor
+                  ref="activityOptionsEditor"
+                  :options="builderActivityOptions"
+                  :save-error="activitySaveError"
+                  :save-state="activitySaveState"
+                  @dirty-change="handleActivityDirtyChange"
+                  @drafts-change="handleActivityDraftsChange"
+                  @edited="handleActivityEdited"
+                  @save="saveActivityOptions"
+                />
+                <BuilderScreenConfigSummary :screens="summaryScreens" />
+              </template>
+
               <section v-else class="builder-stage__placeholder" aria-label="Содержимое будущего шага">
                 <p>Каркас шага готов</p>
                 <h3>Что появится здесь в следующих задачах</h3>
@@ -911,6 +1067,7 @@ onUnmounted(() => {
               </section>
 
               <BuilderImageLibrary
+                v-if="currentStep !== 3"
                 :editable-screen-types="currentStep === 1
                   ? ['invitation', 'acceptance']
                   : []"
@@ -922,6 +1079,7 @@ onUnmounted(() => {
 
             <BuilderMobilePreview
               v-if="previewScreens"
+              :activity-options="previewActivityOptions"
               :author-name="autosave.form.author_name"
               :builder-step="currentStep"
               :date-options="previewDateOptions"
@@ -948,7 +1106,7 @@ onUnmounted(() => {
             aria-live="polite"
           >
             <strong>Шаг {{ currentStep }} из {{ BUILDER_STEPS.length }}</strong>
-            <span>{{ currentStep <= 2 ? autosavePresentation.label : 'Позиция сохранена' }}</span>
+            <span>{{ currentStep <= 3 ? autosavePresentation.label : 'Позиция сохранена' }}</span>
           </div>
           <button
             v-if="nextStep"

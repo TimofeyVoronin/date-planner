@@ -1,3 +1,4 @@
+import type { ActivityOptionsPayload, ActivityOptionRecord } from '../types/activity'
 import type {
   InvitationCreatePayload,
   InvitationCreateResponse,
@@ -12,6 +13,7 @@ import type {
   InvitationScreenRecord,
   InvitationScreenUpdatePayload,
 } from '../types/screen'
+import { normalizeActivityOptionsResponse } from '../utils/activities'
 import { normalizeInvitationScreen, normalizeInvitationScreens } from '../utils/screens'
 
 export function useInvitationsApi() {
@@ -100,6 +102,43 @@ export function useInvitationsApi() {
     return normalizeInvitationScreen(response)
   }
 
+  async function getActivityOptions(
+    id: string,
+    token: string,
+  ): Promise<ActivityOptionRecord[]> {
+    const response = await $fetch<unknown>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/activity-options/`,
+      {
+        baseURL,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+
+    return normalizeActivityOptionsResponse(response)
+  }
+
+  async function saveActivityOptions(
+    id: string,
+    token: string,
+    payload: ActivityOptionsPayload,
+  ): Promise<ActivityOptionRecord[]> {
+    const response = await $fetch<unknown>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/activity-options/`,
+      {
+        baseURL,
+        method: 'PUT',
+        body: payload,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+
+    return normalizeActivityOptionsResponse(response)
+  }
+
   function publishInvitation(id: string, token: string): Promise<InvitationRecord> {
     return $fetch<InvitationRecord>(
       `/api/v1/invitations/${encodeURIComponent(id)}/publish/`,
@@ -180,10 +219,12 @@ export function useInvitationsApi() {
   return {
     confirmPlan,
     createInvitation,
+    getActivityOptions,
     getInvitationScreens,
     getManagedInvitation,
     getPublicInvitation,
     publishInvitation,
+    saveActivityOptions,
     savePlanOptions,
     savePlanSelection,
     saveInvitationResponse,
