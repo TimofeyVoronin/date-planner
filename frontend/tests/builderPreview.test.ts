@@ -5,6 +5,7 @@ import {
   BUILDER_PREVIEW_DATES,
   BUILDER_PREVIEW_DEVICES,
   BUILDER_PREVIEW_SCREEN_DEFINITIONS,
+  buildBuilderPreviewActivityOptions,
   buildBuilderPreviewDateOptions,
   getBuilderPreviewDevice,
   getBuilderPreviewNoButtonTransform,
@@ -94,7 +95,7 @@ describe('builder interactive preview definitions', () => {
     expect(getBuilderPreviewNoButtonTransform(99)).toEqual({ x: 34, y: 30, scale: .76 })
   })
 
-  it('turns local builder drafts into live preview choices', () => {
+  it('turns local date drafts into live preview choices', () => {
     expect(buildBuilderPreviewDateOptions([
       { startsAt: '2030-01-02T18:30', place: ' Кофейня ', comment: ' У окна ' },
       { startsAt: '', place: '', comment: '' },
@@ -108,6 +109,36 @@ describe('builder interactive preview definitions', () => {
         id: 'draft-date-2',
         label: 'Дата и время пока не указаны',
         description: 'Место пока не указано',
+      },
+    ])
+  })
+
+  it('turns local activity drafts into live preview choices', () => {
+    expect(buildBuilderPreviewActivityOptions([
+      {
+        title: ' Кино ',
+        description: ' Премьера ',
+        imageKey: 'activity-movie',
+        place: ' Центр ',
+      },
+      {
+        title: '',
+        description: '',
+        imageKey: 'activity-coffee',
+        place: '',
+      },
+    ])).toEqual([
+      {
+        id: 'draft-activity-1',
+        label: 'Кино',
+        description: 'Центр — Премьера',
+        imageKey: 'activity-movie',
+      },
+      {
+        id: 'draft-activity-2',
+        label: 'Название активности пока не указано',
+        description: 'Описание пока не указано',
+        imageKey: 'activity-coffee',
       },
     ])
   })
