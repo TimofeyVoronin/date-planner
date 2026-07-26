@@ -1,3 +1,5 @@
+import type { InvitationImageKey } from '../types/invitation-image'
+import type { InvitationScreenRecord } from '../types/screen'
 import {
   MAX_PLAN_OPTIONS,
   MIN_PLAN_OPTIONS,
@@ -35,6 +37,27 @@ export type PlanConfirmationStage = 'confirmed' | 'expired' | 'hidden' | 'ready'
 export type PersistedPlanSelectionState = {
   isSaved: boolean
   selectedOptionId: string | null
+}
+
+export type PlanSelectionAvailability = 'available' | 'empty' | 'expired'
+
+export type PlanSelectionOptionState = {
+  availability: PlanSelectionAvailability
+  options: InvitationPlanOption[]
+}
+
+export type PlanSelectionScreenPresentation = {
+  buttonText: string
+  imageKey: InvitationImageKey
+  subtitle: string
+  title: string
+}
+
+const DEFAULT_PLAN_SELECTION_SCREEN: PlanSelectionScreenPresentation = {
+  buttonText: 'Сохранить выбор',
+  imageKey: 'date-selection-default',
+  subtitle: 'Выбор можно изменить до этапа итогового подтверждения.',
+  title: 'Выбери вариант свидания',
 }
 
 function padDatePart(value: number): string {
@@ -235,6 +258,45 @@ export function sortPlanOptions(options: InvitationPlanOption[]): InvitationPlan
   return [...options].sort((first, second) => (
     first.position - second.position || first.starts_at.localeCompare(second.starts_at)
   ))
+}
+
+export function getSelectablePlanOptions(
+  options: InvitationPlanOption[],
+  now: Date = new Date(),
+): InvitationPlanOption[] {
+  return sortPlanOptions(options).filter(option => !isPlanOptionExpired(option, now))
+}
+
+export function getPlanSelectionOptionState(
+  options: InvitationPlanOption[],
+  now: Date = new Date(),
+): PlanSelectionOptionState {
+  const selectableOptions = getSelectablePlanOptions(options, now)
+  let availability: PlanSelectionAvailability = 'available'
+
+  if (selectableOptions.length === 0) {
+    availability = options.length > 0 ? 'expired' : 'empty'
+  }
+
+  return {
+    availability,
+    options: selectableOptions,
+  }
+}
+
+export function getPlanSelectionScreenPresentation(
+  screen: InvitationScreenRecord | null,
+): PlanSelectionScreenPresentation {
+  if (screen?.screen_type !== 'date_selection') {
+    return { ...DEFAULT_PLAN_SELECTION_SCREEN }
+  }
+
+  return {
+    buttonText: screen.button_text.trim() || DEFAULT_PLAN_SELECTION_SCREEN.buttonText,
+    imageKey: screen.image_key,
+    subtitle: screen.subtitle.trim(),
+    title: screen.title.trim() || DEFAULT_PLAN_SELECTION_SCREEN.title,
+  }
 }
 
 export function findSelectedPlanOption(

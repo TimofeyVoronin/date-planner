@@ -333,6 +333,47 @@ def test_pending_recipient_cannot_read_preconfigured_options() -> None:
     assert len(managed.json()["plan_options"]) == 2
 
 
+def test_accepted_public_snapshot_combines_date_screen_and_ordered_options() -> None:
+    """The recipient receives the configured date screen and author option order together."""
+    client = APIClient()
+    invitation, token = create_invitation(
+        client,
+        planning_mode=Invitation.PlanningMode.BEFORE_ACCEPTANCE,
+    )
+    create_options(invitation)
+    publish = client.put(
+        publication_path(invitation),
+        {},
+        format="json",
+        **authorization(token),
+    )
+    assert publish.status_code == status.HTTP_200_OK
+
+    accepted = client.put(
+        f"/api/v1/invitations/{invitation.pk}/response/",
+        {"response_status": Invitation.ResponseStatus.ACCEPTED},
+        format="json",
+    )
+
+    assert accepted.status_code == status.HTTP_200_OK
+    body = accepted.json()
+    date_screen = next(
+        screen for screen in body["screens"] if screen["screen_type"] == "date_selection"
+    )
+    assert date_screen == {
+        "screen_type": "date_selection",
+        "title": "Когда тебе удобно?",
+        "subtitle": "Выбери один из предложенных вариантов даты и времени.",
+        "button_text": "Продолжить",
+        "secondary_button_text": "",
+        "image_key": "date-selection-default",
+    }
+    assert [option["position"] for option in body["plan_options"]] == [0, 1]
+    assert [option["place"] for option in body["plan_options"]] == ["Место 1", "Место 2"]
+    assert "management_token" not in body
+    assert "management_token_hash" not in body
+
+
 def test_published_preconfigured_options_cannot_be_replaced() -> None:
     """A published preconfigured set is immutable during the recipient flow."""
     client = APIClient()

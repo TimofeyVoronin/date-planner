@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { InvitationPlanOption } from '../types/invitation'
+import type { InvitationScreenRecord } from '../types/screen'
 import {
   buildPlanConfirmationPayload,
   findSelectedPlanOption,
   findUsableSelectedPlanOption,
   getMinimumPlanDateTime,
   getPersistedPlanSelectionState,
+  getPlanSelectionOptionState,
+  getPlanSelectionScreenPresentation,
+  getSelectablePlanOptions,
   getPlanConfirmationStage,
   isoToLocalDateTime,
   isPlanOptionExpired,
@@ -40,6 +44,15 @@ function option(id: string, position: number, startsAt: string): InvitationPlanO
     place: `Место ${id}`,
     comment: '',
   }
+}
+
+const dateSelectionScreen: InvitationScreenRecord = {
+  screen_type: 'date_selection',
+  title: 'Выбери нашу дату',
+  subtitle: 'Здесь только актуальные варианты.',
+  button_text: 'Подтвердить дату',
+  secondary_button_text: '',
+  image_key: 'date-sunset',
 }
 
 describe('planning date conversion', () => {
@@ -242,6 +255,86 @@ describe('planning validation and payload', () => {
         { starts_at: '2030-01-01T13:00:00Z', place: 'Парк', comment: '' },
       ],
     }, now)).toBe(false)
+  })
+})
+
+describe('recipient date-selection screen', () => {
+  const now = new Date('2030-01-02T12:00:00Z')
+
+  it('shows only future options in the author-defined order', () => {
+    const options = [
+      option('later', 2, '2030-01-04T12:00:00Z'),
+      option('expired', 0, '2030-01-02T12:00:00Z'),
+      option('first', 1, '2030-01-03T12:00:00Z'),
+      option('invalid', 3, 'not-a-date'),
+    ]
+
+    expect(getSelectablePlanOptions(options, now).map(item => item.id)).toEqual([
+      'first',
+      'later',
+    ])
+    expect(options.map(item => item.id)).toEqual(['later', 'expired', 'first', 'invalid'])
+  })
+
+  it('distinguishes empty, expired, and available option sets', () => {
+    expect(getPlanSelectionOptionState([], now)).toEqual({
+      availability: 'empty',
+      options: [],
+    })
+
+    expect(getPlanSelectionOptionState([
+      option('expired', 0, '2030-01-02T12:00:00Z'),
+      option('invalid', 1, 'not-a-date'),
+    ], now)).toEqual({
+      availability: 'expired',
+      options: [],
+    })
+
+    const available = getPlanSelectionOptionState([
+      option('later', 2, '2030-01-04T12:00:00Z'),
+      option('expired', 0, '2030-01-02T12:00:00Z'),
+      option('first', 1, '2030-01-03T12:00:00Z'),
+    ], now)
+
+    expect(available.availability).toBe('available')
+    expect(available.options.map(item => item.id)).toEqual(['first', 'later'])
+  })
+
+  it('uses the configured date-selection copy, action, and image', () => {
+    expect(getPlanSelectionScreenPresentation(dateSelectionScreen)).toEqual({
+      title: 'Выбери нашу дату',
+      subtitle: 'Здесь только актуальные варианты.',
+      buttonText: 'Подтвердить дату',
+      imageKey: 'date-sunset',
+    })
+  })
+
+  it('preserves an empty subtitle and defends required public copy', () => {
+    expect(getPlanSelectionScreenPresentation({
+      ...dateSelectionScreen,
+      title: '   ',
+      subtitle: '   ',
+      button_text: '   ',
+    })).toEqual({
+      title: 'Выбери вариант свидания',
+      subtitle: '',
+      buttonText: 'Сохранить выбор',
+      imageKey: 'date-sunset',
+    })
+  })
+
+  it('falls back to the built-in public screen for quick invitations', () => {
+    expect(getPlanSelectionScreenPresentation(null)).toEqual({
+      title: 'Выбери вариант свидания',
+      subtitle: 'Выбор можно изменить до этапа итогового подтверждения.',
+      buttonText: 'Сохранить выбор',
+      imageKey: 'date-selection-default',
+    })
+    expect(getPlanSelectionScreenPresentation({
+      ...dateSelectionScreen,
+      screen_type: 'acceptance',
+      image_key: 'acceptance-default',
+    })).toEqual(getPlanSelectionScreenPresentation(null))
   })
 })
 

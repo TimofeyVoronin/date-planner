@@ -18,6 +18,7 @@ These rules apply to the entire repository.
 - Treat `Invitation.planning_mode` as a lifecycle contract: quick invitations always plan after acceptance, preconfigured options are editable only in an extended draft, pending or declined recipients cannot read those options, and publication freezes the chosen mode and option set.
 - Reuse one date-option editor across the builder and management page. Preserve submitted array order as `position`, keep two–five future options as the shared validation contract, and flush valid dirty drafts before navigation.
 - Keep builder date preview data client-only: it may reflect unsaved local option drafts immediately, but demonstration values and preview selections must never be persisted through the planning API.
+- Drive the recipient date-selection screen from the latest public server snapshot: use the `date_selection` configuration, expose only future options relative to `server_now`, preserve author order, and allow the saved choice to change only until final confirmation.
 - Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 

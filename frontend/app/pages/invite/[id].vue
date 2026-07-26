@@ -57,6 +57,9 @@ const invitationScreen = computed(() => (
 const acceptanceScreen = computed(() => (
   getInvitationScreenByType(invitation.value?.screens ?? [], 'acceptance')
 ))
+const dateSelectionScreen = computed(() => (
+  getInvitationScreenByType(invitation.value?.screens ?? [], 'date_selection')
+))
 const planningSectionRef = ref<HTMLElement | null>(null)
 
 useHead({
@@ -386,19 +389,6 @@ onMounted(loadInvitation)
             </section>
           </template>
 
-          <section
-            v-else-if="invitation.response_status === 'accepted'
-              && invitation.plan_options.length === 0"
-            class="plan-waiting"
-            aria-labelledby="plan-waiting-title"
-          >
-            <span aria-hidden="true">🗓️</span>
-            <div>
-              <h2 id="plan-waiting-title">Ждём варианты от автора</h2>
-              <p>Ответ уже сохранён. Здесь появятся даты и места, когда автор их предложит.</p>
-            </div>
-          </section>
-
           <PlanOptionSelector
             v-else-if="invitation.response_status === 'accepted'"
             :current-time="currentTime"
@@ -407,6 +397,7 @@ onMounted(loadInvitation)
             :persisted-option-id="invitation.selected_option_id"
             :save-error="selectionSaveError"
             :save-state="selectionSaveState"
+            :screen="dateSelectionScreen"
             @save="savePlanSelection"
             @update:model-value="choosePlanOption"
           />
