@@ -259,6 +259,24 @@ class ActivityOptionsResponseSerializer(serializers.Serializer):
     options = ActivityOptionSerializer(many=True, read_only=True)
 
 
+class ActivitySelectionUpdateSerializer(serializers.Serializer):
+    """Validate the recipient's selected activity identifier."""
+
+    editable_fields = frozenset(("option_id",))
+
+    option_id = serializers.UUIDField()
+
+    def to_internal_value(self, data: object) -> dict[str, object]:
+        """Reject unknown fields instead of silently ignoring them."""
+        if isinstance(data, Mapping):
+            unsupported_fields = sorted(set(data) - self.editable_fields)
+            if unsupported_fields:
+                raise serializers.ValidationError(
+                    {field: ["This field is not supported."] for field in unsupported_fields}
+                )
+        return super().to_internal_value(data)
+
+
 class InvitationSerializer(serializers.ModelSerializer):
     """Validate invitation input and expose its public representation."""
 
@@ -268,11 +286,19 @@ class InvitationSerializer(serializers.ModelSerializer):
             "before acceptance."
         )
     )
+    activity_options = serializers.SerializerMethodField(
+        help_text=(
+            "Ordered activity options. Public recipients receive them only after accepting "
+            "an extended invitation."
+        )
+    )
     screens = serializers.SerializerMethodField(
         help_text="Recipient-facing screen configuration in stable flow order."
     )
     selected_option_id = serializers.UUIDField(read_only=True, allow_null=True)
     selected_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    selected_activity_option_id = serializers.UUIDField(read_only=True, allow_null=True)
+    activity_selected_at = serializers.DateTimeField(read_only=True, allow_null=True)
     confirmed_at = serializers.DateTimeField(read_only=True, allow_null=True)
     server_now = serializers.SerializerMethodField(
         help_text="Server time captured while serializing this API response."
@@ -295,8 +321,11 @@ class InvitationSerializer(serializers.ModelSerializer):
             "responded_at",
             "screens",
             "plan_options",
+            "activity_options",
             "selected_option_id",
             "selected_at",
+            "selected_activity_option_id",
+            "activity_selected_at",
             "confirmed_at",
             "server_now",
             "created_at",
@@ -310,8 +339,11 @@ class InvitationSerializer(serializers.ModelSerializer):
             "responded_at",
             "screens",
             "plan_options",
+            "activity_options",
             "selected_option_id",
             "selected_at",
+            "selected_activity_option_id",
+            "activity_selected_at",
             "confirmed_at",
             "server_now",
             "created_at",
@@ -376,6 +408,22 @@ class InvitationSerializer(serializers.ModelSerializer):
         ):
             return []
         return InvitationPlanOptionSerializer(invitation.plan_options.all(), many=True).data
+
+    @extend_schema_field(ActivityOptionSerializer(many=True))
+    def get_activity_options(self, invitation: Invitation) -> list[dict[str, object]]:
+        """Hide activity choices until an extended invitation is accepted publicly."""
+        if invitation.creation_mode != Invitation.CreationMode.EXTENDED:
+            return []
+
+        request = self.context.get("request")
+        has_management_capability = isinstance(getattr(request, "auth", None), str)
+        if (
+            invitation.response_status != Invitation.ResponseStatus.ACCEPTED
+            and not has_management_capability
+        ):
+            return []
+
+        return ActivityOptionSerializer(invitation.activity_options.all(), many=True).data
 
     @extend_schema_field(InvitationScreenSerializer(many=True))
     def get_screens(self, invitation: Invitation) -> list[dict[str, object]]:

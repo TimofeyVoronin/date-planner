@@ -1,3 +1,4 @@
+import type { ActivityOptionRecord } from './activity'
 import type { InvitationScreenRecord } from './screen'
 
 export const INVITATION_NAME_MAX_LENGTH = 100
@@ -68,8 +69,11 @@ export type InvitationRecord = InvitationCreatePayload & {
   responded_at: string | null
   screens: InvitationScreenRecord[]
   plan_options: InvitationPlanOption[]
+  activity_options: ActivityOptionRecord[]
   selected_option_id: string | null
   selected_at: string | null
+  selected_activity_option_id: string | null
+  activity_selected_at: string | null
   confirmed_at: string | null
   created_at: string
   updated_at: string

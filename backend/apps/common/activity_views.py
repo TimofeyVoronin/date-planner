@@ -2,8 +2,10 @@
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils.timezone import now
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import generics, status
+from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
@@ -18,6 +20,8 @@ from apps.common.serializers import (
     ActivityOptionSerializer,
     ActivityOptionsResponseSerializer,
     ActivityOptionsUpdateSerializer,
+    ActivitySelectionUpdateSerializer,
+    InvitationSerializer,
 )
 
 
@@ -158,5 +162,102 @@ class InvitationActivityOptionsView(NoStoreResponseMixin, generics.GenericAPIVie
                 )
 
             output_data = self._response_data(invitation)
+
+        return Response(output_data, status=status.HTTP_200_OK)
+
+
+class InvitationActivitySelectionView(NoStoreResponseMixin, generics.GenericAPIView):
+    """Store the recipient's current activity selection through the public UUID."""
+
+    queryset = Invitation.objects.filter(
+        publication_status=Invitation.PublicationStatus.PUBLISHED,
+    ).select_for_update()
+    serializer_class = ActivitySelectionUpdateSerializer
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle, ScopedRateThrottle]
+    throttle_scope = "invitation_plan"
+    http_method_names = ["put", "options"]
+
+    @extend_schema(
+        tags=["activities"],
+        summary="Select one invitation activity option",
+        request=ActivitySelectionUpdateSerializer,
+        responses={
+            status.HTTP_200_OK: InvitationSerializer,
+            status.HTTP_400_BAD_REQUEST: OpenApiResponse(
+                description="The activity option identifier is invalid or unavailable."
+            ),
+            status.HTTP_404_NOT_FOUND: OpenApiResponse(description="Invitation not found."),
+            status.HTTP_409_CONFLICT: OpenApiResponse(
+                description=(
+                    "The invitation has not been accepted or its final plan is already confirmed."
+                )
+            ),
+            status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
+                description="The planning rate limit was exceeded."
+            ),
+        },
+        auth=[],
+    )
+    def put(self, request: Request, *args: object, **kwargs: object) -> Response:
+        """Select or replace one activity, leaving exact retries idempotent."""
+        with transaction.atomic():
+            invitation = self.get_object()
+            input_serializer = self.get_serializer(data=request.data)
+            input_serializer.is_valid(raise_exception=True)
+            option_id = input_serializer.validated_data["option_id"]
+
+            if invitation.creation_mode != Invitation.CreationMode.EXTENDED:
+                return Response(
+                    {"detail": "Activity selection belongs only to extended invitations."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            if invitation.response_status != Invitation.ResponseStatus.ACCEPTED:
+                return Response(
+                    {"detail": "Activity selection is available only after acceptance."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            try:
+                selected_option = ActivityOption.objects.get(
+                    invitation=invitation,
+                    pk=option_id,
+                )
+            except ActivityOption.DoesNotExist:
+                return Response(
+                    {"option_id": ["This activity is not available for the invitation."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            current_selection = invitation.activity_options.filter(
+                selected_at__isnull=False
+            ).first()
+            final_plan_confirmed = invitation.plan_options.filter(
+                confirmed_at__isnull=False
+            ).exists()
+            if final_plan_confirmed and (
+                current_selection is None or current_selection.pk != selected_option.pk
+            ):
+                return Response(
+                    {"detail": "The confirmed activity selection cannot be changed."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            if current_selection is None or current_selection.pk != selected_option.pk:
+                selection_time = now()
+                invitation.activity_options.filter(selected_at__isnull=False).update(
+                    selected_at=None
+                )
+                selected_option.selected_at = selection_time
+                selected_option.save(update_fields=("selected_at",))
+                invitation.save(update_fields=("updated_at",))
+
+            invitation._selected_activity_option_cache = selected_option
+            output_data = InvitationSerializer(
+                invitation,
+                context=self.get_serializer_context(),
+            ).data
 
         return Response(output_data, status=status.HTTP_200_OK)

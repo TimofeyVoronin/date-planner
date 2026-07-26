@@ -15,6 +15,7 @@ import type {
   InvitationValidationErrors,
   PlanOptionsPayload,
 } from '../../../../types/invitation'
+import { findSelectedActivityOption } from '../../../../utils/activities'
 import { buildBuilderPath } from '../../../../utils/builder'
 import {
   buildPublicInvitationUrl,
@@ -90,6 +91,14 @@ const publicationPresentation = computed(() => getInvitationPublicationPresentat
 ))
 const planningModePresentation = computed(() => getInvitationPlanningModePresentation(
   invitation.value?.planning_mode ?? 'after_acceptance',
+))
+const selectedActivityOption = computed(() => findSelectedActivityOption(
+  invitation.value?.activity_options ?? [],
+  invitation.value?.selected_activity_option_id ?? null,
+))
+const activitySelectionRequired = computed(() => (
+  invitation.value?.creation_mode === 'extended'
+  && (invitation.value?.activity_options.length ?? 0) > 0
 ))
 const selectedPlanOption = computed(() => findSelectedPlanOption(
   invitation.value?.plan_options ?? [],
@@ -331,7 +340,11 @@ async function confirmSelectedPlan(): Promise<void> {
 
   const expectedSelectedOption = selectedPlanOption.value
 
-  if (confirmationStage.value !== 'ready' || !expectedSelectedOption) {
+  if (
+    confirmationStage.value !== 'ready'
+    || !expectedSelectedOption
+    || (activitySelectionRequired.value && !selectedActivityOption.value)
+  ) {
     return
   }
 
@@ -685,14 +698,38 @@ onUnmounted(() => {
                   Получатель выбрал {{ formatDate(invitation.selected_at) }}
                 </small>
               </div>
-              <p v-else class="plan-data-error" role="alert">
-                Выбранный вариант не найден. Обнови данные перед подтверждением.
+              <div
+                v-if="selectedActivityOption"
+                class="plan-confirmation__activity"
+              >
+                <span aria-hidden="true">✨</span>
+                <div>
+                  <small>Выбранная активность</small>
+                  <strong>{{ selectedActivityOption.title }}</strong>
+                  <span v-if="selectedActivityOption.place">
+                    {{ selectedActivityOption.place }}
+                  </span>
+                  <time
+                    v-if="invitation.activity_selected_at"
+                    :datetime="invitation.activity_selected_at"
+                  >
+                    Выбрано: {{ formatDate(invitation.activity_selected_at) }}
+                  </time>
+                </div>
+              </div>
+              <p
+                v-else-if="activitySelectionRequired"
+                class="plan-confirmation__activity-waiting"
+                role="status"
+              >
+                <span aria-hidden="true">⏳</span>
+                Получатель выбрал дату, но ещё не сохранил активность. Обнови статус позже.
               </p>
 
               <p id="plan-confirmation-warning" class="plan-confirmation__warning">
                 <span aria-hidden="true">⚠️</span>
                 <strong>Это действие необратимо.</strong>
-                После подтверждения получатель больше не сможет менять вариант.
+                После подтверждения получатель больше не сможет менять дату и активность.
               </p>
 
               <p
@@ -718,7 +755,8 @@ onUnmounted(() => {
                 aria-describedby="plan-confirmation-warning"
                 :disabled="confirmationActionState === 'saving'
                   || statusRefreshState === 'loading'
-                  || !selectedPlanOption"
+                  || !selectedPlanOption
+                  || (activitySelectionRequired && !selectedActivityOption)"
                 @click="confirmSelectedPlan"
               >
                 <span aria-hidden="true">

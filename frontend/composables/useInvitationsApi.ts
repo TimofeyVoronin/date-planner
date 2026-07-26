@@ -1,4 +1,8 @@
-import type { ActivityOptionsPayload, ActivityOptionRecord } from '../types/activity'
+import type {
+  ActivityOptionsPayload,
+  ActivityOptionRecord,
+  ActivitySelectionPayload,
+} from '../types/activity'
 import type {
   InvitationCreatePayload,
   InvitationCreateResponse,
@@ -184,6 +188,20 @@ export function useInvitationsApi() {
     )
   }
 
+  function saveActivitySelection(
+    id: string,
+    payload: ActivitySelectionPayload,
+  ): Promise<InvitationRecord> {
+    return $fetch<InvitationRecord>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/activity-selection/`,
+      {
+        baseURL,
+        method: 'PUT',
+        body: payload,
+      },
+    )
+  }
+
   function savePlanSelection(
     id: string,
     payload: PlanSelectionPayload,
@@ -225,6 +243,7 @@ export function useInvitationsApi() {
     getPublicInvitation,
     publishInvitation,
     saveActivityOptions,
+    saveActivitySelection,
     savePlanOptions,
     savePlanSelection,
     saveInvitationResponse,

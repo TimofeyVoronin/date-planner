@@ -1,3 +1,5 @@
+import type { InvitationImageKey } from '../types/invitation-image'
+import type { InvitationScreenRecord } from '../types/screen'
 import {
   ACTIVITY_OPTION_DESCRIPTION_MAX_LENGTH,
   ACTIVITY_OPTION_IMAGE_KEYS,
@@ -30,6 +32,25 @@ export type ActivityOptionsValidation = {
 export type ActivityOptionsApiError = InvitationApiError & {
   formError: string | null
   optionErrors: ActivityOptionDraftErrors[]
+}
+
+export type PersistedActivitySelectionState = {
+  isSaved: boolean
+  selectedOptionId: string | null
+}
+
+export type ActivitySelectionScreenPresentation = {
+  buttonText: string
+  imageKey: InvitationImageKey
+  subtitle: string
+  title: string
+}
+
+const DEFAULT_ACTIVITY_SELECTION_SCREEN: ActivitySelectionScreenPresentation = {
+  buttonText: 'Сохранить активность',
+  imageKey: 'activity-selection-default',
+  subtitle: 'Выбор можно изменить до окончательного подтверждения автором.',
+  title: 'Чем займёмся?',
 }
 
 type UnknownRecord = Record<string, unknown>
@@ -281,4 +302,77 @@ export function parseActivityOptionsApiError(error: unknown): ActivityOptionsApi
     formError,
     optionErrors,
   }
+}
+
+export function getActivitySelectionScreenPresentation(
+  screen: InvitationScreenRecord | null,
+): ActivitySelectionScreenPresentation {
+  if (screen?.screen_type !== 'activity_selection') {
+    return { ...DEFAULT_ACTIVITY_SELECTION_SCREEN }
+  }
+
+  return {
+    buttonText: screen.button_text.trim() || DEFAULT_ACTIVITY_SELECTION_SCREEN.buttonText,
+    imageKey: screen.image_key,
+    subtitle: screen.subtitle.trim(),
+    title: screen.title.trim() || DEFAULT_ACTIVITY_SELECTION_SCREEN.title,
+  }
+}
+
+export function findSelectedActivityOption(
+  options: ActivityOptionRecord[],
+  selectedOptionId: string | null,
+): ActivityOptionRecord | null {
+  if (!selectedOptionId) {
+    return null
+  }
+
+  return options.find(option => option.id === selectedOptionId) ?? null
+}
+
+export function getPersistedActivitySelectionState(
+  options: ActivityOptionRecord[],
+  selectedOptionId: string | null,
+): PersistedActivitySelectionState {
+  const selectedOption = findSelectedActivityOption(options, selectedOptionId)
+
+  return {
+    isSaved: Boolean(selectedOption),
+    selectedOptionId: selectedOption?.id ?? null,
+  }
+}
+
+export function shouldRefreshActivitySelection(error: InvitationApiError): boolean {
+  return error.status === 400 || error.status === 409
+}
+
+export async function refreshActivitySelectionAfterRejection<TSnapshot>(
+  error: InvitationApiError,
+  loadLatest: () => Promise<TSnapshot>,
+): Promise<TSnapshot | null> {
+  if (!shouldRefreshActivitySelection(error)) {
+    return null
+  }
+
+  return loadLatest()
+}
+
+export function parseActivitySelectionApiError(error: unknown): InvitationApiError {
+  const parsedError = parseInvitationApiError(error)
+
+  if (parsedError.status === 400) {
+    return {
+      ...parsedError,
+      message: 'Эта активность больше недоступна. Обнови список и выбери другой вариант.',
+    }
+  }
+
+  if (parsedError.status === 409) {
+    return {
+      ...parsedError,
+      message: 'Выбор активности уже нельзя изменить. Загрузи актуальное состояние приглашения.',
+    }
+  }
+
+  return parsedError
 }

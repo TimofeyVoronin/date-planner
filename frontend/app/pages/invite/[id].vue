@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
+import ActivityOptionSelector from '../../../components/activities/ActivityOptionSelector.vue'
 import InvitationPreviewCard from '../../../components/invitation/InvitationPreviewCard.vue'
 import FinalPlanCard from '../../../components/planning/FinalPlanCard.vue'
 import PlanOptionSelector from '../../../components/planning/PlanOptionSelector.vue'
@@ -9,6 +10,12 @@ import type {
   FinalInvitationResponseStatus,
   InvitationRecord,
 } from '../../../types/invitation'
+import {
+  findSelectedActivityOption,
+  getPersistedActivitySelectionState,
+  parseActivitySelectionApiError,
+  refreshActivitySelectionAfterRejection,
+} from '../../../utils/activities'
 import {
   isFinalInvitationResponseStatus,
   isInvitationId,
@@ -29,6 +36,7 @@ import {
 type PageState = 'error' | 'loading' | 'ready'
 type ResponseSaveState = 'error' | 'idle' | 'saved' | 'saving'
 type SelectionSaveState = 'error' | 'idle' | 'saved' | 'saving'
+type ActivitySelectionSaveState = 'error' | 'idle' | 'saved' | 'saving'
 
 const route = useRoute()
 const api = useInvitationsApi()
@@ -43,6 +51,9 @@ const savedDuringThisVisit = ref(false)
 const selectedOptionId = ref<string | null>(null)
 const selectionSaveState = ref<SelectionSaveState>('idle')
 const selectionSaveError = ref('')
+const selectedActivityOptionId = ref<string | null>(null)
+const activitySelectionSaveState = ref<ActivitySelectionSaveState>('idle')
+const activitySelectionSaveError = ref('')
 const announceFinalPlan = ref(false)
 const announceFinalPlanOnNextSnapshot = ref(false)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
@@ -60,7 +71,11 @@ const acceptanceScreen = computed(() => (
 const dateSelectionScreen = computed(() => (
   getInvitationScreenByType(invitation.value?.screens ?? [], 'date_selection')
 ))
+const activitySelectionScreen = computed(() => (
+  getInvitationScreenByType(invitation.value?.screens ?? [], 'activity_selection')
+))
 const planningSectionRef = ref<HTMLElement | null>(null)
+const activitySectionRef = ref<HTMLElement | null>(null)
 
 useHead({
   title: 'Личное приглашение — Date Planner',
@@ -82,6 +97,17 @@ function applyPersistedPlanSelection(nextInvitation: InvitationRecord): void {
   selectionSaveError.value = ''
 }
 
+function applyPersistedActivitySelection(nextInvitation: InvitationRecord): void {
+  const selectionState = getPersistedActivitySelectionState(
+    nextInvitation.activity_options,
+    nextInvitation.selected_activity_option_id,
+  )
+
+  selectedActivityOptionId.value = selectionState.selectedOptionId
+  activitySelectionSaveState.value = selectionState.isSaved ? 'saved' : 'idle'
+  activitySelectionSaveError.value = ''
+}
+
 function applyPublicInvitationRecord(
   nextInvitation: InvitationRecord,
   announceNewFinalPlan = false,
@@ -91,6 +117,7 @@ function applyPublicInvitationRecord(
   synchronizeServerTime(nextInvitation.server_now)
   invitation.value = nextInvitation
   applyPersistedPlanSelection(nextInvitation)
+  applyPersistedActivitySelection(nextInvitation)
   announceFinalPlan.value = announceNewFinalPlan
     && shouldAnnounceNewFinalPlan(previousConfirmedAt, nextInvitation.confirmed_at)
 }
@@ -241,6 +268,7 @@ async function savePlanSelection(): Promise<void> {
     })
 
     applyPublicInvitationRecord(nextInvitation, true)
+    scrollToActivitySelection()
   }
   catch (error: unknown) {
     const parsedError = parsePlanningApiError(error, 'selection')
@@ -266,6 +294,94 @@ async function savePlanSelection(): Promise<void> {
     selectionSaveError.value = parsedError.message
     selectionSaveState.value = 'error'
   }
+}
+
+function chooseActivityOption(optionId: string): void {
+  const selectedOption = findSelectedActivityOption(
+    invitation.value?.activity_options ?? [],
+    optionId,
+  )
+
+  if (!selectedOption) {
+    selectedActivityOptionId.value = null
+    activitySelectionSaveError.value = 'Эта активность больше недоступна. Выбери другой вариант.'
+    activitySelectionSaveState.value = 'error'
+    return
+  }
+
+  selectedActivityOptionId.value = selectedOption.id
+  activitySelectionSaveError.value = ''
+  activitySelectionSaveState.value = optionId === invitation.value?.selected_activity_option_id
+    ? 'saved'
+    : 'idle'
+}
+
+async function saveActivitySelection(): Promise<void> {
+  if (!selectedActivityOptionId.value || activitySelectionSaveState.value === 'saving') {
+    return
+  }
+
+  const selectedOption = findSelectedActivityOption(
+    invitation.value?.activity_options ?? [],
+    selectedActivityOptionId.value,
+  )
+  if (!selectedOption) {
+    selectedActivityOptionId.value = null
+    activitySelectionSaveError.value = 'Эта активность больше недоступна. Выбери другой вариант.'
+    activitySelectionSaveState.value = 'error'
+    return
+  }
+
+  activitySelectionSaveState.value = 'saving'
+  activitySelectionSaveError.value = ''
+
+  try {
+    const nextInvitation = await api.saveActivitySelection(invitationId.value, {
+      option_id: selectedOption.id,
+    })
+
+    applyPublicInvitationRecord(nextInvitation, true)
+  }
+  catch (error: unknown) {
+    const parsedError = parseActivitySelectionApiError(error)
+
+    try {
+      const nextInvitation = await refreshActivitySelectionAfterRejection(
+        parsedError,
+        () => api.getPublicInvitation(invitationId.value),
+      )
+
+      if (nextInvitation) {
+        applyPublicInvitationSnapshot(nextInvitation, true)
+        return
+      }
+    }
+    catch (refreshError: unknown) {
+      activitySelectionSaveState.value = 'error'
+      announceFinalPlanOnNextSnapshot.value = true
+      showPublicSnapshotRefreshFailure(refreshError)
+      return
+    }
+
+    activitySelectionSaveError.value = parsedError.message
+    activitySelectionSaveState.value = 'error'
+  }
+}
+
+function scrollToActivitySelection(): void {
+  void nextTick(() => {
+    const target = activitySectionRef.value
+    if (!target) {
+      return
+    }
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    target.scrollIntoView({
+      behavior: reducedMotion ? 'auto' : 'smooth',
+      block: 'start',
+    })
+    target.focus({ preventScroll: true })
+  })
 }
 
 function retryResponseSave(): void {
@@ -389,18 +505,36 @@ onMounted(loadInvitation)
             </section>
           </template>
 
-          <PlanOptionSelector
-            v-else-if="invitation.response_status === 'accepted'"
-            :current-time="currentTime"
-            :model-value="selectedOptionId"
-            :options="invitation.plan_options"
-            :persisted-option-id="invitation.selected_option_id"
-            :save-error="selectionSaveError"
-            :save-state="selectionSaveState"
-            :screen="dateSelectionScreen"
-            @save="savePlanSelection"
-            @update:model-value="choosePlanOption"
-          />
+          <template v-else-if="invitation.response_status === 'accepted'">
+            <PlanOptionSelector
+              :current-time="currentTime"
+              :model-value="selectedOptionId"
+              :options="invitation.plan_options"
+              :persisted-option-id="invitation.selected_option_id"
+              :save-error="selectionSaveError"
+              :save-state="selectionSaveState"
+              :screen="dateSelectionScreen"
+              @save="savePlanSelection"
+              @update:model-value="choosePlanOption"
+            />
+            <div
+              v-if="selectedOptionId && selectionSaveState === 'saved'"
+              ref="activitySectionRef"
+              class="public-activity-selection"
+              tabindex="-1"
+            >
+              <ActivityOptionSelector
+                :model-value="selectedActivityOptionId"
+                :options="invitation.activity_options"
+                :persisted-option-id="invitation.selected_activity_option_id"
+                :save-error="activitySelectionSaveError"
+                :save-state="activitySelectionSaveState"
+                :screen="activitySelectionScreen"
+                @save="saveActivitySelection"
+                @update:model-value="chooseActivityOption"
+              />
+            </div>
+          </template>
           <p class="detail-shell__privacy">
             <span aria-hidden="true">🔒</span>
             Страница доступна только тем, у кого есть ссылка.

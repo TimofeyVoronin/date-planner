@@ -53,8 +53,9 @@ class InvitationConfirmationView(NoStoreResponseMixin, generics.GenericAPIView):
             status.HTTP_409_CONFLICT: OpenApiResponse(
                 description=(
                     "The invitation is not accepted, has no selection, or its selected "
-                    "option differs from option_id or is no longer in the future "
-                    "(code: selected_option_expired)."
+                    "option differs from option_id, the activity is not selected, or the "
+                    "date is no longer in the future (codes: activity_selection_required, "
+                    "selected_option_expired)."
                 )
             ),
             status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
@@ -86,6 +87,20 @@ class InvitationConfirmationView(NoStoreResponseMixin, generics.GenericAPIView):
             if selected_option.pk != expected_option_id:
                 return Response(
                     {"detail": "The selected planning option changed before confirmation."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            if (
+                selected_option.confirmed_at is None
+                and invitation.creation_mode == Invitation.CreationMode.EXTENDED
+                and invitation.activity_options.exists()
+                and invitation.selected_activity_option is None
+            ):
+                return Response(
+                    {
+                        "code": "activity_selection_required",
+                        "detail": "Confirmation requires a selected activity option.",
+                    },
                     status=status.HTTP_409_CONFLICT,
                 )
 

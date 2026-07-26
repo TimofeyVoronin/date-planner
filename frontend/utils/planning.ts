@@ -573,6 +573,13 @@ export function parsePlanConfirmationApiError(error: unknown): InvitationApiErro
     }
   }
 
+  if (parsedError.code === 'activity_selection_required') {
+    return {
+      ...parsedError,
+      message: 'Получатель ещё не выбрал активность. Обнови статус после его выбора.',
+    }
+  }
+
   if (parsedError.status === 400) {
     return {
       ...parsedError,

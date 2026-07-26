@@ -21,7 +21,7 @@ These rules apply to the entire repository.
 - Drive the recipient date-selection screen from the latest public server snapshot: use the `date_selection` configuration, expose only future options relative to `server_now`, preserve author order, and allow the saved choice to change only until final confirmation.
 - Reopen a published option set only when its selected option is both expired and unconfirmed. Recovery must atomically replace the whole set, clear the stale selection, preserve the invitation mode and publication state, reject future or confirmed selections, and keep exact retries idempotent.
 - Keep activity options owned by one extended invitation and ordered by their submitted array position. The first management API replaces the complete collection atomically, accepts three–six draft options, keeps exact retries idempotent, and freezes edits after publication.
-- Reuse the activity collection contract in the third builder step. Keep three–six rows, preserve their submitted order, use only built-in local image keys, surface positional field errors, flush valid dirty drafts before forward navigation, and keep live preview drafts client-only.
+- Keep recipient activity selection public only for accepted published extended invitations. Expose prepared activities only after acceptance, allow one mutable selection until final confirmation, preserve exact retries, reject foreign options, and require an activity before confirming when the invitation has activity choices.
 - Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 

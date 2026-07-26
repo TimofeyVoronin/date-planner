@@ -33,3 +33,7 @@ export type ActivityOptionsPayload = {
   options: ActivityOptionPayload[]
 }
 
+
+export type ActivitySelectionPayload = {
+  option_id: string
+}

@@ -5010,3 +5010,312 @@ button {
   min-width: 0;
   gap: 3px;
 }
+
+/* DPL-403: recipient activity selection after a saved date choice. */
+.public-activity-selection {
+  margin-top: 22px;
+  outline: none;
+  scroll-margin-top: 24px;
+}
+
+.activity-selector {
+  width: min(100%, 680px);
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid rgb(229 104 143 / 15%);
+  border-radius: 26px;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 20px 48px rgb(133 38 72 / 10%);
+}
+
+.activity-selector__hero {
+  display: grid;
+  aspect-ratio: 16 / 8;
+  place-items: center;
+  overflow: hidden;
+  background: linear-gradient(145deg, #f8eaf0, #fff8fb);
+}
+
+.activity-selector__hero img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.activity-selector__body {
+  padding: 28px;
+}
+
+.activity-selector__options {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  gap: 14px;
+  border: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.activity-choice {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid #ecd5de;
+  border-radius: 19px;
+  background: #fffafd;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.activity-choice:hover {
+  border-color: #d890a8;
+  transform: translateY(-1px);
+}
+
+.activity-choice:focus-within {
+  outline: 4px solid rgb(76 39 56 / 22%);
+  outline-offset: 3px;
+}
+
+.activity-choice--checked {
+  border-color: #e05b84;
+  background: #fff3f7;
+  box-shadow: 0 10px 24px rgb(193 61 102 / 10%);
+}
+
+.activity-choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.activity-choice__marker {
+  position: absolute;
+  z-index: 2;
+  top: 13px;
+  left: 13px;
+  width: 22px;
+  height: 22px;
+  border: 2px solid #d39aae;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 4px 12px rgb(91 37 58 / 14%);
+}
+
+.activity-choice--checked .activity-choice__marker {
+  border: 6px solid #e04a79;
+}
+
+.activity-choice > img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  background: #faedf2;
+}
+
+.activity-choice__copy {
+  display: grid;
+  min-width: 0;
+  padding: 16px;
+  gap: 6px;
+}
+
+.activity-choice__copy > strong {
+  color: #4a2739;
+  font-size: .96rem;
+  overflow-wrap: anywhere;
+}
+
+.activity-choice__copy > span:not(.activity-choice__saved-badge) {
+  color: #806675;
+  font-size: .76rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.activity-choice__copy > small {
+  color: #75515f;
+  font-size: .72rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.activity-choice__saved-badge {
+  width: fit-content;
+  padding: 4px 8px;
+  margin-top: 3px;
+  color: #397358;
+  border-radius: 999px;
+  background: #e6f6ed;
+  font-size: .65rem;
+  font-weight: 900;
+}
+
+.activity-selector__empty {
+  display: flex;
+  padding: 16px;
+  align-items: flex-start;
+  gap: 12px;
+  color: #74546a;
+  border: 1px solid rgb(205 122 157 / 20%);
+  border-radius: 16px;
+  background: #fff3f8;
+}
+
+.activity-selector__empty > span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 76%);
+  font-size: 1.2rem;
+}
+
+.activity-selector__empty strong,
+.activity-selector__empty p {
+  margin: 0;
+}
+
+.activity-selector__empty strong {
+  display: block;
+  color: #5f3a4e;
+  font-size: .85rem;
+}
+
+.activity-selector__empty p {
+  margin-top: 4px;
+  font-size: .76rem;
+  line-height: 1.5;
+}
+
+.activity-selector__status {
+  padding: 12px 14px;
+  margin-top: 14px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  font-size: .78rem;
+  line-height: 1.45;
+}
+
+.activity-selector__status--saved {
+  color: #286b4d;
+  border-color: rgb(63 165 116 / 18%);
+  background: #effaf5;
+}
+
+.activity-selector__status--error {
+  color: #862c48;
+  border-color: rgb(200 62 96 / 18%);
+  background: #fff0f3;
+}
+
+.activity-selector__status--saving {
+  color: #735043;
+  border-color: rgb(190 144 82 / 19%);
+  background: #fff8e9;
+}
+
+.activity-selector__submit {
+  display: inline-flex;
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 20px;
+  margin-top: 14px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #f26490, #df356b);
+  box-shadow: 0 12px 26px rgb(209 49 99 / 20%);
+  font-weight: 800;
+}
+
+.activity-selector__submit:disabled {
+  cursor: default;
+  opacity: .62;
+  box-shadow: none;
+}
+
+.activity-selector__submit:focus-visible {
+  outline: 4px solid rgb(76 39 56 / 25%);
+  outline-offset: 3px;
+}
+
+.plan-confirmation__activity {
+  display: flex;
+  padding: 14px 16px;
+  align-items: flex-start;
+  gap: 11px;
+  border: 1px solid #ead4dd;
+  border-radius: 16px;
+  background: #fff9fc;
+}
+
+.plan-confirmation__activity > span {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffeaf2;
+}
+
+.plan-confirmation__activity > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.plan-confirmation__activity small {
+  color: #ad5977;
+  font-size: .66rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.plan-confirmation__activity strong {
+  color: #4c293a;
+  overflow-wrap: anywhere;
+}
+
+.plan-confirmation__activity span,
+.plan-confirmation__activity time {
+  color: #765b68;
+  font-size: .75rem;
+  overflow-wrap: anywhere;
+}
+
+.plan-confirmation__activity-waiting {
+  display: flex;
+  padding: 13px 15px;
+  margin: 0;
+  align-items: flex-start;
+  gap: 9px;
+  color: #795b36;
+  border: 1px solid #ecd9b7;
+  border-radius: 14px;
+  background: #fff8e8;
+  font-size: .78rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .activity-selector__body {
+    padding: 20px;
+  }
+
+  .activity-selector__options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

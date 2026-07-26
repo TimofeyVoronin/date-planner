@@ -429,7 +429,9 @@ def test_published_activity_collection_is_read_only() -> None:
     ]
     public_response = client.get(f"/api/v1/invitations/{invitation.pk}/")
     assert public_response.status_code == status.HTTP_200_OK
-    assert "activity_options" not in public_response.json()
+    assert public_response.json()["activity_options"] == []
+    assert public_response.json()["selected_activity_option_id"] is None
+    assert public_response.json()["activity_selected_at"] is None
 
 
 def test_deleting_invitation_cascades_activity_options() -> None:
