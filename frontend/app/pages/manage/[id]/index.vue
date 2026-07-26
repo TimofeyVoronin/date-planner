@@ -19,6 +19,7 @@ import { buildBuilderPath } from '../../../../utils/builder'
 import {
   buildPublicInvitationUrl,
   getInvitationCreationModePresentation,
+  getInvitationPlanningModePresentation,
   getInvitationPublicationPresentation,
   getInvitationResponsePresentation,
   isInvitationId,
@@ -30,8 +31,9 @@ import {
   findSelectedPlanOption,
   formatPlanOptionDate,
   getPlanConfirmationStage,
+  getPlanRecoveryPresentation,
   parsePlanConfirmationApiError,
-  parsePlanningApiError,
+  parsePlanOptionsApiError,
   planOptionsPayloadHasExpiredDate,
   reconcileServerExpiredSelectionId,
   shouldAnnounceNewFinalPlan,
@@ -65,7 +67,14 @@ const invitationEditState = ref<InvitationEditSaveState>('idle')
 const invitationEditError = ref('')
 const invitationEditFieldErrors = ref<InvitationValidationErrors>({})
 const hasUnsavedInvitationChanges = ref(false)
+const hasUnsavedPlanChanges = ref(false)
+const planOptionsEditor = ref<InstanceType<typeof PlanOptionsEditor> | null>(null)
 const serverExpiredSelectionId = ref<string | null>(null)
+const hasUnsavedPageChanges = computed(() => (
+  hasUnsavedInvitationChanges.value
+  || hasUnsavedPlanChanges.value
+  || planSaveState.value === 'saving'
+))
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const builderPath = computed(() => buildBuilderPath(invitationId.value))
 const { clearManagementToken, takeManagementToken } = useManagementToken(invitationId)
@@ -79,6 +88,9 @@ const creationModePresentation = computed(() => getInvitationCreationModePresent
 const publicationPresentation = computed(() => getInvitationPublicationPresentation(
   invitation.value?.publication_status ?? 'draft',
 ))
+const planningModePresentation = computed(() => getInvitationPlanningModePresentation(
+  invitation.value?.planning_mode ?? 'after_acceptance',
+))
 const selectedPlanOption = computed(() => findSelectedPlanOption(
   invitation.value?.plan_options ?? [],
   invitation.value?.selected_option_id ?? null,
@@ -89,6 +101,9 @@ const confirmationStage = computed(() => getPlanConfirmationStage(
   invitation.value?.confirmed_at ?? null,
   currentTime.value,
   serverExpiredSelectionId.value,
+))
+const planRecoveryPresentation = computed(() => getPlanRecoveryPresentation(
+  invitation.value?.planning_mode ?? 'after_acceptance',
 ))
 
 useHead({
@@ -144,6 +159,7 @@ async function loadManagedInvitation(): Promise<void> {
     invitationEditError.value = ''
     invitationEditFieldErrors.value = {}
     hasUnsavedInvitationChanges.value = false
+    hasUnsavedPlanChanges.value = false
     pageState.value = 'ready'
   }
   catch (error: unknown) {
@@ -364,7 +380,11 @@ async function confirmSelectedPlan(): Promise<void> {
   }
 }
 
-function markPlanDirty(): void {
+function markPlanDirty(isDirty: boolean): void {
+  hasUnsavedPlanChanges.value = isDirty
+}
+
+function markPlanEdited(): void {
   planSaveState.value = 'idle'
   planSaveError.value = ''
 }
@@ -395,10 +415,11 @@ async function savePlanningOptions(payload: PlanOptionsPayload): Promise<void> {
 
     applyManagedInvitation(nextInvitation)
     planSaveState.value = 'success'
+    hasUnsavedPlanChanges.value = false
     confirmationJustCompleted.value = false
   }
   catch (error: unknown) {
-    const parsedError = parsePlanningApiError(error, 'options')
+    const parsedError = parsePlanOptionsApiError(error)
 
     if (parsedError.status === 401 || parsedError.status === 403) {
       clearManagementToken()
@@ -410,6 +431,10 @@ async function savePlanningOptions(payload: PlanOptionsPayload): Promise<void> {
 
     planSaveError.value = parsedError.message
     planSaveState.value = 'error'
+    planOptionsEditor.value?.applyServerErrors(
+      parsedError.formError,
+      parsedError.optionErrors,
+    )
   }
 }
 
@@ -435,7 +460,7 @@ function formatDate(value: string): string {
 }
 
 function warnBeforeUnload(event: BeforeUnloadEvent): void {
-  if (!hasUnsavedInvitationChanges.value) {
+  if (!hasUnsavedPageChanges.value) {
     return
   }
 
@@ -444,7 +469,7 @@ function warnBeforeUnload(event: BeforeUnloadEvent): void {
 }
 
 onBeforeRouteLeave(() => {
-  if (!hasUnsavedInvitationChanges.value) {
+  if (!hasUnsavedPageChanges.value) {
     return true
   }
 
@@ -714,38 +739,59 @@ onUnmounted(() => {
               >
                 <span class="plan-recovery__icon" aria-hidden="true">🕰️</span>
                 <div>
-                  <p>Нужно обновить план</p>
+                  <p>{{ planRecoveryPresentation.eyebrow }}</p>
                   <h2 id="plan-recovery-title">Время выбранного варианта уже прошло</h2>
                   <p v-if="selectedPlanOption">
                     Получатель выбирал «{{ selectedPlanOption.place }}» —
                     {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}.
                   </p>
-                  <p>
-                    Исправь даты или предложи новый набор ниже. Сохранение заменит устаревшие
-                    варианты и сбросит прежний выбор, чтобы получатель мог выбрать снова.
-                  </p>
+                  <p>{{ planRecoveryPresentation.description }}</p>
                 </div>
               </section>
 
               <PlanOptionsEditor
+                ref="planOptionsEditor"
                 :current-time="currentTime"
                 :options="invitation.plan_options"
                 :save-error="planSaveError"
                 :save-state="planSaveState"
-                @dirty="markPlanDirty"
+                variant="recovery"
+                @dirty-change="markPlanDirty"
+                @edited="markPlanEdited"
                 @save="savePlanningOptions"
               />
             </template>
 
             <PlanOptionsEditor
-              v-else-if="invitation.response_status === 'accepted'"
+              v-else-if="invitation.response_status === 'accepted'
+                && invitation.planning_mode === 'after_acceptance'"
+              ref="planOptionsEditor"
               :current-time="currentTime"
               :options="invitation.plan_options"
               :save-error="planSaveError"
               :save-state="planSaveState"
-              @dirty="markPlanDirty"
+              @dirty-change="markPlanDirty"
+              @edited="markPlanEdited"
               @save="savePlanningOptions"
             />
+
+            <section
+              v-else-if="invitation.planning_mode === 'before_acceptance'
+                && invitation.response_status === 'accepted'"
+              class="plan-recovery"
+              role="status"
+            >
+              <span class="plan-recovery__icon" aria-hidden="true">🔒</span>
+              <div>
+                <p>Даты подготовлены заранее</p>
+                <h2>Опубликованный набор защищён от обычной замены</h2>
+                <p>
+                  Получатель выбирает из вариантов, опубликованных вместе с приглашением.
+                  Редактор откроется только если выбранный, но ещё не подтверждённый вариант
+                  успеет пройти.
+                </p>
+              </div>
+            </section>
           </template>
 
           <dl class="manage-card__details">
@@ -753,6 +799,12 @@ onUnmounted(() => {
               <dt>Режим</dt>
               <dd>
                 {{ creationModePresentation.icon }} {{ creationModePresentation.label }}
+              </dd>
+            </div>
+            <div>
+              <dt>Подготовка дат</dt>
+              <dd>
+                {{ planningModePresentation.icon }} {{ planningModePresentation.label }}
               </dd>
             </div>
             <div>

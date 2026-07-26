@@ -1,5 +1,7 @@
 """Common and invitation API views."""
 
+from collections.abc import Mapping
+
 from django.db import transaction
 from django.utils.timezone import now
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -189,6 +191,9 @@ class InvitationManagementDetailView(NoStoreResponseMixin, generics.GenericAPIVi
                 description="The management token does not match this invitation."
             ),
             status.HTTP_404_NOT_FOUND: OpenApiResponse(description="Invitation not found."),
+            status.HTTP_409_CONFLICT: OpenApiResponse(
+                description="The planning mode of a published invitation cannot change."
+            ),
             status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
                 description="The invitation management rate limit was exceeded."
             ),
@@ -198,6 +203,29 @@ class InvitationManagementDetailView(NoStoreResponseMixin, generics.GenericAPIVi
         """Apply only author-editable fields and keep exact retries idempotent."""
         with transaction.atomic():
             invitation = self.get_object()
+            request_data = request.data if isinstance(request.data, Mapping) else {}
+            requested_planning_mode = request_data.get("planning_mode")
+            requested_creation_mode = request_data.get("creation_mode")
+            changes_planning_mode = (
+                requested_planning_mode in Invitation.PlanningMode.values
+                and requested_planning_mode != invitation.planning_mode
+                and (
+                    invitation.creation_mode == Invitation.CreationMode.EXTENDED
+                    or requested_creation_mode == Invitation.CreationMode.EXTENDED
+                )
+            ) or (
+                requested_creation_mode == Invitation.CreationMode.QUICK
+                and invitation.planning_mode != Invitation.PlanningMode.AFTER_ACCEPTANCE
+            )
+            if (
+                changes_planning_mode
+                and invitation.publication_status == Invitation.PublicationStatus.PUBLISHED
+            ):
+                return Response(
+                    {"detail": "The planning mode cannot change after publication."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
             input_serializer = self.get_serializer(
                 invitation,
                 data=request.data,

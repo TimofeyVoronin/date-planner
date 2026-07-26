@@ -153,7 +153,12 @@ class InvitationPlanOptionSerializer(serializers.ModelSerializer):
 class InvitationSerializer(serializers.ModelSerializer):
     """Validate invitation input and expose its public representation."""
 
-    plan_options = InvitationPlanOptionSerializer(many=True, read_only=True)
+    plan_options = serializers.SerializerMethodField(
+        help_text=(
+            "Ordered planning options. Pending recipients do not receive options prepared "
+            "before acceptance."
+        )
+    )
     screens = serializers.SerializerMethodField(
         help_text="Recipient-facing screen configuration in stable flow order."
     )
@@ -174,6 +179,7 @@ class InvitationSerializer(serializers.ModelSerializer):
             "recipient_name",
             "message",
             "creation_mode",
+            "planning_mode",
             "publication_status",
             "published_at",
             "response_status",
@@ -217,7 +223,50 @@ class InvitationSerializer(serializers.ModelSerializer):
                     "while extended reserves the invitation for the guided builder."
                 ),
             },
+            "planning_mode": {
+                "required": False,
+                "help_text": (
+                    "Whether the author prepares date options before the recipient accepts "
+                    "or only after acceptance."
+                ),
+            },
         }
+
+    def validate(self, attrs: dict[str, object]) -> dict[str, object]:
+        """Keep quick invitations on the compact post-acceptance planning flow."""
+        creation_mode = attrs.get(
+            "creation_mode",
+            getattr(self.instance, "creation_mode", Invitation.CreationMode.QUICK),
+        )
+        planning_mode = attrs.get(
+            "planning_mode",
+            getattr(
+                self.instance,
+                "planning_mode",
+                Invitation.PlanningMode.AFTER_ACCEPTANCE,
+            ),
+        )
+        if (
+            creation_mode == Invitation.CreationMode.QUICK
+            and planning_mode != Invitation.PlanningMode.AFTER_ACCEPTANCE
+        ):
+            raise serializers.ValidationError(
+                {"planning_mode": ["Quick invitations always prepare dates after acceptance."]}
+            )
+        return attrs
+
+    @extend_schema_field(InvitationPlanOptionSerializer(many=True))
+    def get_plan_options(self, invitation: Invitation) -> list[dict[str, object]]:
+        """Hide preconfigured options until acceptance outside management requests."""
+        request = self.context.get("request")
+        has_management_capability = isinstance(getattr(request, "auth", None), str)
+        if (
+            invitation.planning_mode == Invitation.PlanningMode.BEFORE_ACCEPTANCE
+            and invitation.response_status != Invitation.ResponseStatus.ACCEPTED
+            and not has_management_capability
+        ):
+            return []
+        return InvitationPlanOptionSerializer(invitation.plan_options.all(), many=True).data
 
     @extend_schema_field(InvitationScreenSerializer(many=True))
     def get_screens(self, invitation: Invitation) -> list[dict[str, object]]:
@@ -242,6 +291,7 @@ class InvitationManagementUpdateSerializer(serializers.ModelSerializer):
         "recipient_name",
         "message",
         "creation_mode",
+        "planning_mode",
     )
 
     class Meta:
@@ -253,6 +303,7 @@ class InvitationManagementUpdateSerializer(serializers.ModelSerializer):
             "recipient_name",
             "message",
             "creation_mode",
+            "planning_mode",
         )
         extra_kwargs = {
             "author_name": {"min_length": 1, "trim_whitespace": True},
@@ -263,7 +314,37 @@ class InvitationManagementUpdateSerializer(serializers.ModelSerializer):
                 "trim_whitespace": True,
             },
             "creation_mode": {"required": False},
+            "planning_mode": {"required": False},
         }
+
+    def validate(self, attrs: dict[str, object]) -> dict[str, object]:
+        """Validate the combined creation and planning flow before applying changes."""
+        invitation = self.instance
+        if not isinstance(invitation, Invitation):
+            raise RuntimeError("Management updates require an Invitation instance.")
+
+        creation_mode = attrs.get("creation_mode", invitation.creation_mode)
+        planning_mode = attrs.get("planning_mode", invitation.planning_mode)
+        if creation_mode == Invitation.CreationMode.QUICK:
+            if (
+                "planning_mode" in attrs
+                and planning_mode != Invitation.PlanningMode.AFTER_ACCEPTANCE
+            ):
+                raise serializers.ValidationError(
+                    {"planning_mode": ["Quick invitations always prepare dates after acceptance."]}
+                )
+            planning_mode = Invitation.PlanningMode.AFTER_ACCEPTANCE
+            attrs["planning_mode"] = planning_mode
+
+        if (
+            planning_mode == Invitation.PlanningMode.BEFORE_ACCEPTANCE
+            and creation_mode != Invitation.CreationMode.EXTENDED
+        ):
+            raise serializers.ValidationError(
+                {"planning_mode": ["Preparing dates before acceptance requires extended mode."]}
+            )
+
+        return attrs
 
     def to_internal_value(self, data: object) -> dict[str, object]:
         """Reject unknown and lifecycle fields instead of silently ignoring them."""
@@ -293,6 +374,13 @@ class InvitationManagementUpdateSerializer(serializers.ModelSerializer):
 
         if changed_fields:
             invitation.save(update_fields=(*changed_fields, "updated_at"))
+
+        if (
+            "planning_mode" in changed_fields
+            and invitation.planning_mode == Invitation.PlanningMode.AFTER_ACCEPTANCE
+            and invitation.publication_status == Invitation.PublicationStatus.DRAFT
+        ):
+            invitation.plan_options.all().delete()
 
         if invitation.creation_mode == Invitation.CreationMode.EXTENDED:
             from apps.common.screens import ensure_default_invitation_screens

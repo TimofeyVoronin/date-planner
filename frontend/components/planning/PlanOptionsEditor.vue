@@ -11,6 +11,7 @@ import {
 import {
   getMinimumPlanDateTime,
   planDraftsToPayload,
+  planOptionDraftsHaveChanges,
   planOptionToDraft,
   sortPlanOptions,
   validatePlanOptionDrafts,
@@ -18,34 +19,115 @@ import {
   type PlanOptionDraftErrors,
 } from '../../utils/planning'
 
-type SaveState = 'error' | 'idle' | 'saving' | 'success'
+type PlanOptionsSaveState = 'error' | 'idle' | 'saving' | 'success'
+
+type EditorVariant = 'builder' | 'management' | 'recovery'
 type EditorRow = PlanOptionDraft & { key: number }
 
 type Props = {
   currentTime: Date
   options: InvitationPlanOption[]
   saveError?: string
-  saveState?: SaveState
+  saveState?: PlanOptionsSaveState
+  variant?: EditorVariant
 }
 
 const props = withDefaults(defineProps<Props>(), {
   saveError: '',
   saveState: 'idle',
+  variant: 'management',
 })
 const emit = defineEmits<{
-  dirty: []
+  dirtyChange: [isDirty: boolean]
+  edited: []
+  draftsChange: [drafts: PlanOptionDraft[]]
   save: [payload: PlanOptionsPayload]
 }>()
 
 const rows = ref<EditorRow[]>([])
+const baselineDrafts = ref<PlanOptionDraft[]>([])
 const optionErrors = ref<PlanOptionDraftErrors[]>([])
 const formError = ref('')
 const statusRef = ref<HTMLElement | null>(null)
 const minimumDateTime = computed(() => getMinimumPlanDateTime(props.currentTime))
+const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'часовой пояс устройства'
 let nextKey = 0
+let persistedFingerprint = ''
 
+const drafts = computed<PlanOptionDraft[]>(() => rows.value.map(({ startsAt, place, comment }) => ({
+  startsAt,
+  place,
+  comment,
+})))
+const isDirty = computed(() => (
+  planOptionDraftsHaveChanges(drafts.value, baselineDrafts.value)
+))
 const canAdd = computed(() => rows.value.length < MAX_PLAN_OPTIONS)
 const canRemove = computed(() => rows.value.length > MIN_PLAN_OPTIONS)
+const isSaving = computed(() => props.saveState === 'saving')
+const canSubmit = computed(() => isDirty.value && !isSaving.value)
+const copy = computed(() => {
+  if (props.variant === 'builder') {
+    return {
+      eyebrow: 'Варианты до публикации',
+      title: 'Подготовь даты и места',
+      description: (
+        `Добавь от ${MIN_PLAN_OPTIONS} до ${MAX_PLAN_OPTIONS} вариантов. `
+        + 'Они сохранятся в черновике и станут видны получателю только после ответа «Да».'
+      ),
+      success: 'Варианты сохранены в черновике и готовы к публикации.',
+      submit: 'Сохранить варианты в черновике',
+    }
+  }
+
+  if (props.variant === 'recovery') {
+    return {
+      eyebrow: 'Новый набор',
+      title: 'Предложи актуальные варианты',
+      description: (
+        `Добавь от ${MIN_PLAN_OPTIONS} до ${MAX_PLAN_OPTIONS} будущих вариантов. `
+        + 'Сохранение удалит устаревший набор и сбросит прошлый выбор получателя.'
+      ),
+      success: 'Новый набор сохранён — получатель может выбрать актуальный вариант.',
+      submit: 'Заменить устаревшие варианты',
+    }
+  }
+
+  return {
+    eyebrow: 'Следующий шаг',
+    title: 'Предложи варианты свидания',
+    description: (
+      `Добавь от ${MIN_PLAN_OPTIONS} до ${MAX_PLAN_OPTIONS} вариантов. `
+      + 'Получатель выберет один на своей странице.'
+    ),
+    success: 'Варианты сохранены — получатель сможет выбрать один по публичной ссылке.',
+    submit: 'Сохранить варианты',
+  }
+})
+const statusPresentation = computed(() => {
+  if (props.saveState === 'saving') {
+    return { icon: '⏳', label: 'Сохранение…', tone: 'saving' }
+  }
+  if (props.saveState === 'error') {
+    return { icon: '!', label: 'Не удалось сохранить', tone: 'error' }
+  }
+  if (isDirty.value) {
+    return { icon: '●', label: 'Есть несохранённые изменения', tone: 'dirty' }
+  }
+  if (props.saveState === 'success') {
+    return { icon: '✓', label: 'Сохранено', tone: 'saved' }
+  }
+
+  return { icon: '✓', label: 'Варианты не изменены', tone: 'idle' }
+})
+
+function cloneDraft(draft: PlanOptionDraft): PlanOptionDraft {
+  return {
+    startsAt: draft.startsAt,
+    place: draft.place,
+    comment: draft.comment,
+  }
+}
 
 function createRow(draft?: PlanOptionDraft): EditorRow {
   nextKey += 1
@@ -58,43 +140,79 @@ function createRow(draft?: PlanOptionDraft): EditorRow {
   }
 }
 
-function syncRows(options: InvitationPlanOption[]): void {
-  const nextRows = sortPlanOptions(options).map(option => createRow(planOptionToDraft(option)))
+function fingerprintOptions(options: InvitationPlanOption[]): string {
+  return JSON.stringify(sortPlanOptions(options).map(option => ({
+    startsAt: option.starts_at,
+    place: option.place,
+    comment: option.comment,
+    position: option.position,
+  })))
+}
 
-  while (nextRows.length < MIN_PLAN_OPTIONS) {
-    nextRows.push(createRow())
+function syncRows(options: InvitationPlanOption[]): void {
+  const nextDrafts = sortPlanOptions(options).map(planOptionToDraft)
+
+  while (nextDrafts.length < MIN_PLAN_OPTIONS) {
+    nextDrafts.push({ startsAt: '', place: '', comment: '' })
   }
 
-  rows.value = nextRows.slice(0, MAX_PLAN_OPTIONS)
+  const limitedDrafts = nextDrafts.slice(0, MAX_PLAN_OPTIONS)
+
+  rows.value = limitedDrafts.map(createRow)
+  baselineDrafts.value = limitedDrafts.map(cloneDraft)
   optionErrors.value = rows.value.map(() => ({}))
   formError.value = ''
 }
 
 function addOption(): void {
-  if (!canAdd.value) {
+  if (!canAdd.value || isSaving.value) {
     return
   }
 
   rows.value.push(createRow())
   optionErrors.value.push({})
   formError.value = ''
-  emit('dirty')
+  emit('edited')
 }
 
 function removeOption(index: number): void {
-  if (!canRemove.value) {
+  if (!canRemove.value || isSaving.value) {
     return
   }
 
   rows.value.splice(index, 1)
   optionErrors.value.splice(index, 1)
   formError.value = ''
-  emit('dirty')
+  emit('edited')
+}
+
+function moveOption(index: number, direction: -1 | 1): void {
+  const targetIndex = index + direction
+
+  if (
+    isSaving.value
+    || targetIndex < 0
+    || targetIndex >= rows.value.length
+  ) {
+    return
+  }
+
+  const [row] = rows.value.splice(index, 1)
+  const [errors] = optionErrors.value.splice(index, 1)
+
+  if (!row) {
+    return
+  }
+
+  rows.value.splice(targetIndex, 0, row)
+  optionErrors.value.splice(targetIndex, 0, errors ?? {})
+  formError.value = ''
+  emit('edited')
 }
 
 function clearOptionError(index: number, field: keyof PlanOptionDraft): void {
-  emit('dirty')
   formError.value = ''
+  emit('edited')
   const errors = optionErrors.value[index]
 
   if (errors?.[field]) {
@@ -106,17 +224,8 @@ function focusStatus(): void {
   void nextTick(() => statusRef.value?.focus())
 }
 
-function submitOptions(): void {
-  if (props.saveState === 'saving') {
-    return
-  }
-
-  const drafts = rows.value.map(({ startsAt, place, comment }) => ({
-    startsAt,
-    place,
-    comment,
-  }))
-  const validation = validatePlanOptionDrafts(drafts, props.currentTime)
+function preparePayload(): PlanOptionsPayload | null {
+  const validation = validatePlanOptionDrafts(drafts.value, props.currentTime)
 
   optionErrors.value = validation.optionErrors
   formError.value = validation.formError ?? ''
@@ -126,25 +235,75 @@ function submitOptions(): void {
       formError.value = 'Проверь заполнение каждого варианта.'
     }
     focusStatus()
-    return
+    return null
   }
 
-  const payload = planDraftsToPayload(drafts)
+  const payload = planDraftsToPayload(drafts.value)
 
   if (!payload) {
     formError.value = 'Не удалось распознать дату и время. Проверь варианты.'
     focusStatus()
-    return
+    return null
   }
 
   formError.value = ''
-  emit('save', payload)
+  return payload
+}
+
+function applyServerErrors(
+  nextFormError: string | null,
+  nextOptionErrors: PlanOptionDraftErrors[],
+): void {
+  optionErrors.value = rows.value.map((_, index) => ({
+    ...(nextOptionErrors[index] ?? {}),
+  }))
+  formError.value = nextFormError ?? (
+    nextOptionErrors.some(errors => Object.keys(errors).length > 0)
+      ? 'Проверь поля, отмеченные сервером.'
+      : ''
+  )
+  focusStatus()
+}
+
+function submitOptions(): void {
+  if (!canSubmit.value) {
+    return
+  }
+
+  const payload = preparePayload()
+
+  if (payload) {
+    emit('save', payload)
+  }
 }
 
 watch(
   () => props.options,
-  syncRows,
+  (options: InvitationPlanOption[]) => {
+    const nextFingerprint = fingerprintOptions(options)
+
+    if (nextFingerprint === persistedFingerprint) {
+      return
+    }
+
+    persistedFingerprint = nextFingerprint
+    syncRows(options)
+  },
   { deep: true, immediate: true },
+)
+
+watch(
+  drafts,
+  (currentDrafts: PlanOptionDraft[]) => {
+    emit('draftsChange', currentDrafts.map(cloneDraft))
+  },
+  { deep: true, immediate: true },
+)
+
+watch(
+  isDirty,
+  value => emit('dirtyChange', value),
+  { immediate: true },
 )
 
 watch(
@@ -155,35 +314,85 @@ watch(
     }
   },
 )
+
+defineExpose({
+  applyServerErrors,
+  preparePayload,
+})
 </script>
 
 <template>
-  <section class="plan-editor" aria-labelledby="plan-editor-title">
-    <header class="plan-section-heading">
-      <p>Следующий шаг</p>
-      <h2 id="plan-editor-title">Предложи варианты свидания</h2>
-      <span>
-        Добавь от {{ MIN_PLAN_OPTIONS }} до {{ MAX_PLAN_OPTIONS }} вариантов.
-        Получатель выберет один на своей странице.
+  <section
+    class="plan-editor"
+    :class="`plan-editor--${variant}`"
+    aria-labelledby="plan-editor-title"
+  >
+    <header class="plan-editor__heading">
+      <div>
+        <p>{{ copy.eyebrow }}</p>
+        <h2 id="plan-editor-title">{{ copy.title }}</h2>
+        <span>{{ copy.description }}</span>
+      </div>
+      <span
+        class="builder-autosave-badge"
+        :class="`builder-autosave-badge--${statusPresentation.tone}`"
+        role="status"
+        aria-live="polite"
+      >
+        <span aria-hidden="true">{{ statusPresentation.icon }}</span>
+        {{ statusPresentation.label }}
       </span>
     </header>
 
-    <form class="plan-editor__form" novalidate @submit.prevent="submitOptions">
+    <div class="plan-editor__timezone" role="note">
+      <span aria-hidden="true">🌍</span>
+      <p>
+        Дата и время вводятся в часовом поясе <strong>{{ localTimeZone }}</strong>.
+        Сервер сохранит точный момент с явным смещением времени.
+      </p>
+    </div>
+
+    <form
+      class="plan-editor__form"
+      novalidate
+      :aria-busy="isSaving"
+      @submit.prevent="submitOptions"
+    >
       <fieldset
         v-for="(row, index) in rows"
         :key="row.key"
         class="plan-option-editor"
+        :disabled="isSaving"
       >
         <legend>
           <span>Вариант {{ index + 1 }}</span>
-          <button
-            v-if="canRemove"
-            type="button"
-            :aria-label="`Удалить вариант ${index + 1}`"
-            @click="removeOption(index)"
-          >
-            Удалить
-          </button>
+          <span class="plan-option-editor__actions">
+            <button
+              type="button"
+              :disabled="index === 0 || isSaving"
+              :aria-label="`Переместить вариант ${index + 1} выше`"
+              @click="moveOption(index, -1)"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              :disabled="index === rows.length - 1 || isSaving"
+              :aria-label="`Переместить вариант ${index + 1} ниже`"
+              @click="moveOption(index, 1)"
+            >
+              ↓
+            </button>
+            <button
+              v-if="canRemove"
+              type="button"
+              :disabled="isSaving"
+              :aria-label="`Удалить вариант ${index + 1}`"
+              @click="removeOption(index)"
+            >
+              Удалить
+            </button>
+          </span>
         </legend>
 
         <div class="plan-option-editor__grid">
@@ -202,7 +411,7 @@ watch(
               @input="clearOptionError(index, 'startsAt')"
             >
             <span :id="`plan-start-hint-${row.key}`" class="form-field__hint">
-              В твоём часовом поясе
+              {{ localTimeZone }}
             </span>
             <span
               v-if="optionErrors[index]?.startsAt"
@@ -270,7 +479,7 @@ watch(
       <button
         class="plan-editor__add"
         type="button"
-        :disabled="!canAdd"
+        :disabled="!canAdd || isSaving"
         @click="addOption"
       >
         <span aria-hidden="true">＋</span>
@@ -288,7 +497,7 @@ watch(
         tabindex="-1"
       >
         <template v-if="!formError && props.saveState === 'success'">
-          Варианты сохранены — получатель сможет выбрать один по публичной ссылке.
+          {{ copy.success }}
         </template>
         <template v-else>
           {{ formError || props.saveError }}
@@ -298,10 +507,10 @@ watch(
       <button
         class="plan-editor__submit"
         type="submit"
-        :disabled="props.saveState === 'saving'"
+        :disabled="!canSubmit"
       >
-        <span aria-hidden="true">{{ props.saveState === 'saving' ? '⏳' : '✓' }}</span>
-        {{ props.saveState === 'saving' ? 'Сохраняем варианты…' : 'Сохранить варианты' }}
+        <span aria-hidden="true">{{ isSaving ? '⏳' : '✓' }}</span>
+        {{ isSaving ? 'Сохраняем варианты…' : copy.submit }}
       </button>
     </form>
   </section>

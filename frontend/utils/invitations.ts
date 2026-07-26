@@ -3,11 +3,14 @@ import {
   INVITATION_MESSAGE_MAX_LENGTH,
   INVITATION_NAME_MAX_LENGTH,
   INVITATION_PUBLICATION_STATUSES,
+  INVITATION_PLANNING_MODES,
   type InvitationCreatePayload,
   type InvitationCreationMode,
+  type InvitationEditForm,
   type InvitationEditSaveState,
   type InvitationField,
   type InvitationPublicationStatus,
+  type InvitationPlanningMode,
   type FinalInvitationResponseStatus,
   type InvitationRecord,
   type InvitationResponseStatus,
@@ -36,6 +39,13 @@ export type InvitationPublicationPresentation = {
   tone: 'draft' | 'published'
 }
 
+export type InvitationPlanningModePresentation = {
+  description: string
+  icon: string
+  label: string
+  shortDescription: string
+}
+
 export type InvitationResponsePresentation = {
   description: string
   icon: string
@@ -50,6 +60,7 @@ const INVITATION_FIELDS: InvitationField[] = [
   'author_name',
   'recipient_name',
   'message',
+  'planning_mode',
 ]
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -117,6 +128,17 @@ export function normalizeInvitationPayload(
   }
 }
 
+export function normalizeInvitationEditForm(
+  form: InvitationEditForm,
+): InvitationEditForm {
+  return {
+    ...normalizeInvitationPayload(form),
+    planning_mode: form.creation_mode === 'quick'
+      ? 'after_acceptance'
+      : form.planning_mode,
+  }
+}
+
 export function validateInvitationPayload(
   payload: InvitationCreatePayload,
 ): InvitationValidationErrors {
@@ -148,24 +170,43 @@ export function validateInvitationPayload(
   return errors
 }
 
+export function validateInvitationEditForm(
+  form: InvitationEditForm,
+): InvitationValidationErrors {
+  const errors = validateInvitationPayload(form)
+
+  if (!isInvitationPlanningMode(form.planning_mode)) {
+    errors.planning_mode = 'Выбери, когда подготовить варианты дат.'
+  }
+  else if (
+    form.creation_mode === 'quick'
+    && form.planning_mode !== 'after_acceptance'
+  ) {
+    errors.planning_mode = 'В быстром режиме даты добавляются после согласия.'
+  }
+
+  return errors
+}
+
 export function hasInvitationValidationErrors(errors: InvitationValidationErrors): boolean {
   return INVITATION_FIELDS.some(field => Boolean(errors[field]))
 }
 
-export function createInvitationEditForm(invitation: InvitationRecord): InvitationCreatePayload {
+export function createInvitationEditForm(invitation: InvitationRecord): InvitationEditForm {
   return {
     author_name: invitation.author_name,
     recipient_name: invitation.recipient_name,
     message: invitation.message,
     creation_mode: invitation.creation_mode,
+    planning_mode: invitation.planning_mode,
   }
 }
 
 export function buildInvitationUpdatePayload(
-  form: InvitationCreatePayload,
+  form: InvitationEditForm,
   invitation: InvitationRecord,
 ): InvitationUpdatePayload {
-  const normalized = normalizeInvitationPayload(form)
+  const normalized = normalizeInvitationEditForm(form)
   const payload: InvitationUpdatePayload = {}
 
   if (normalized.author_name !== invitation.author_name) {
@@ -180,12 +221,15 @@ export function buildInvitationUpdatePayload(
   if (normalized.creation_mode !== invitation.creation_mode) {
     payload.creation_mode = normalized.creation_mode
   }
+  if (normalized.planning_mode !== invitation.planning_mode) {
+    payload.planning_mode = normalized.planning_mode
+  }
 
   return payload
 }
 
 export function invitationEditFormHasChanges(
-  form: InvitationCreatePayload,
+  form: InvitationEditForm,
   invitation: InvitationRecord,
 ): boolean {
   return Object.keys(buildInvitationUpdatePayload(form, invitation)).length > 0
@@ -252,6 +296,34 @@ export function getInvitationCreationModePresentation(
     label: 'Быстрое приглашение',
     description: 'Сразу получи ссылку, а дату и место согласуйте после ответа.',
     submitLabel: 'Создать приглашение',
+  }
+}
+
+export function isInvitationPlanningMode(value: unknown): value is InvitationPlanningMode {
+  return INVITATION_PLANNING_MODES.some(mode => mode === value)
+}
+
+export function getInvitationPlanningModePresentation(
+  mode: InvitationPlanningMode,
+): InvitationPlanningModePresentation {
+  if (mode === 'before_acceptance') {
+    return {
+      icon: '🗓️',
+      label: 'Подготовить даты заранее',
+      description: (
+        'Добавь варианты в черновике. После согласия получатель сразу перейдёт к выбору.'
+      ),
+      shortDescription: 'Варианты готовы до публикации.',
+    }
+  }
+
+  return {
+    icon: '💬',
+    label: 'Добавить даты после согласия',
+    description: (
+      'Сначала дождись ответа «Да», затем предложи даты на странице управления.'
+    ),
+    shortDescription: 'Планирование начнётся после ответа.',
   }
 }
 
@@ -410,6 +482,26 @@ export function parseInvitationApiError(error: unknown): InvitationApiError {
       message: hasInvitationValidationErrors(fieldErrors)
         ? 'Проверь заполненные поля.'
         : firstErrorMessage(responseData?.detail) ?? 'Не удалось проверить данные приглашения.',
+    }
+  }
+
+  if (status === 409) {
+    const conflictMessages: Record<string, string> = {
+      planning_options_required: (
+        'Перед публикацией добавь в конструкторе от двух до пяти вариантов даты.'
+      ),
+      planning_options_expired: (
+        'Один из подготовленных вариантов уже наступил. Обнови даты в конструкторе.'
+      ),
+    }
+
+    return {
+      code,
+      status,
+      fieldErrors,
+      message: (code && conflictMessages[code])
+        ?? firstErrorMessage(responseData?.detail)
+        ?? 'Данные приглашения уже изменились. Обнови страницу и повтори действие.',
     }
   }
 

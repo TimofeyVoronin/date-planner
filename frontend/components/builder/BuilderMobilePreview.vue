@@ -2,6 +2,7 @@
 import { computed, watch, type CSSProperties } from 'vue'
 import { useBuilderPreview } from '../../composables/useBuilderPreview'
 import type {
+  BuilderPreviewDemoOption,
   BuilderPreviewScreen,
 } from '../../types/builder-preview'
 import type { InvitationScreenEditForm } from '../../types/screen'
@@ -22,6 +23,7 @@ import {
 const props = defineProps<{
   authorName: string
   builderStep: BuilderStepNumber
+  dateOptions: BuilderPreviewDemoOption[]
   message: string
   recipientName: string
   screens: Record<BuilderPreviewScreen, InvitationScreenEditForm>
@@ -34,6 +36,14 @@ const activeDefinition = computed(() => (
   getBuilderPreviewScreenDefinition(preview.activeScreen.value)
 ))
 const activeScreenConfig = computed(() => props.screens[preview.activeScreen.value])
+const visibleDateOptions = computed(() => (
+  props.dateOptions.length > 0 ? props.dateOptions : BUILDER_PREVIEW_DATES
+))
+const selectedDate = computed(() => (
+  visibleDateOptions.value.find(option => option.id === preview.selectedDateId.value)
+  ?? visibleDateOptions.value[0]!
+))
+const usesDraftDateOptions = computed(() => props.dateOptions.length > 0)
 const activeImage = computed(() => (
   getInvitationImageByKey(activeScreenConfig.value.image_key)
 ))
@@ -52,7 +62,17 @@ const screenStatus = computed(() => `Предпросмотр: ${activeDefinitio
 
 watch(
   () => props.builderStep,
-  step => preview.syncToBuilderStep(step),
+  (step: BuilderStepNumber) => preview.syncToBuilderStep(step),
+)
+
+watch(
+  visibleDateOptions,
+  (options: readonly BuilderPreviewDemoOption[]) => {
+    if (!options.some(option => option.id === preview.selectedDateId.value)) {
+      preview.selectedDateId.value = options[0]!.id
+    }
+  },
+  { immediate: true },
 )
 
 function selectScreen(screen: BuilderPreviewScreen): void {
@@ -84,7 +104,10 @@ function handleNoClick(event: MouseEvent): void {
       <div>
         <p>Интерактивный предпросмотр</p>
         <h3 id="builder-mobile-preview-title">Пройди приглашение как получатель</h3>
-        <span>Демонстрационные дата и активность не сохраняются на сервере.</span>
+        <span>
+          Варианты даты из конструктора обновляются сразу; демонстрационная активность
+          не сохраняется на сервере.
+        </span>
       </div>
       <button type="button" class="builder-mobile-preview__reset" @click="preview.reset">
         Сбросить
@@ -213,14 +236,16 @@ function handleNoClick(event: MouseEvent): void {
             v-else-if="preview.activeScreen.value === 'date_selection'"
             class="builder-mobile-preview__content"
           >
-            <p class="builder-mobile-preview__eyebrow">Демонстрационные варианты</p>
+            <p class="builder-mobile-preview__eyebrow">
+              {{ usesDraftDateOptions ? 'Варианты из конструктора' : 'Демонстрационные варианты' }}
+            </p>
             <h4>{{ activeScreenConfig.title || 'Когда тебе будет удобно?' }}</h4>
             <p v-if="activeScreenConfig.subtitle" class="builder-mobile-preview__subtitle">
               {{ activeScreenConfig.subtitle }}
             </p>
             <div class="builder-mobile-preview__options" aria-label="Пример вариантов даты">
               <button
-                v-for="option in BUILDER_PREVIEW_DATES"
+                v-for="option in visibleDateOptions"
                 :key="option.id"
                 type="button"
                 :aria-pressed="preview.selectedDateId.value === option.id"
@@ -287,11 +312,11 @@ function handleNoClick(event: MouseEvent): void {
             <dl class="builder-mobile-preview__plan">
               <div>
                 <dt>Дата</dt>
-                <dd>{{ preview.selectedDate.value.label }}</dd>
+                <dd>{{ selectedDate.label }}</dd>
               </div>
               <div>
                 <dt>Место</dt>
-                <dd>{{ preview.selectedDate.value.description }}</dd>
+                <dd>{{ selectedDate.description }}</dd>
               </div>
               <div>
                 <dt>План</dt>

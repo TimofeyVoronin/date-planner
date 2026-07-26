@@ -1,9 +1,12 @@
+import type { InvitationImageKey } from '../types/invitation-image'
+import type { InvitationScreenRecord } from '../types/screen'
 import {
   MAX_PLAN_OPTIONS,
   MIN_PLAN_OPTIONS,
   PLAN_OPTION_COMMENT_MAX_LENGTH,
   PLAN_OPTION_PLACE_MAX_LENGTH,
   type InvitationPlanOption,
+  type InvitationPlanningMode,
   type PlanConfirmationPayload,
   type PlanOptionPayload,
   type PlanOptionsPayload,
@@ -24,6 +27,11 @@ export type PlanOptionsValidation = {
   valid: boolean
 }
 
+export type PlanOptionsApiError = InvitationApiError & {
+  formError: string | null
+  optionErrors: PlanOptionDraftErrors[]
+}
+
 export type PlanConfirmationStage = 'confirmed' | 'expired' | 'hidden' | 'ready'
 
 export type PersistedPlanSelectionState = {
@@ -31,8 +39,57 @@ export type PersistedPlanSelectionState = {
   selectedOptionId: string | null
 }
 
+export type PlanSelectionAvailability = 'available' | 'empty' | 'expired'
+
+export type PlanSelectionOptionState = {
+  availability: PlanSelectionAvailability
+  options: InvitationPlanOption[]
+}
+
+export type PlanSelectionScreenPresentation = {
+  buttonText: string
+  imageKey: InvitationImageKey
+  subtitle: string
+  title: string
+}
+
+export type PlanRecoveryPresentation = {
+  description: string
+  eyebrow: string
+}
+
+const DEFAULT_PLAN_SELECTION_SCREEN: PlanSelectionScreenPresentation = {
+  buttonText: 'Сохранить выбор',
+  imageKey: 'date-selection-default',
+  subtitle: 'Выбор можно изменить до этапа итогового подтверждения.',
+  title: 'Выбери вариант свидания',
+}
+
 function padDatePart(value: number): string {
   return String(value).padStart(2, '0')
+}
+
+export function getPlanRecoveryPresentation(
+  planningMode: InvitationPlanningMode,
+): PlanRecoveryPresentation {
+  if (planningMode === 'before_acceptance') {
+    return {
+      eyebrow: 'Опубликованный набор устарел',
+      description: (
+        'Это единственное состояние, в котором опубликованные заранее даты можно заменить. '
+        + 'Сохранение сбросит устаревший выбор, но не изменит само приглашение и его режим '
+        + 'планирования.'
+      ),
+    }
+  }
+
+  return {
+    eyebrow: 'Нужно обновить план',
+    description: (
+      'Исправь даты или предложи новый набор ниже. Сохранение заменит устаревшие варианты '
+      + 'и сбросит прежний выбор, чтобы получатель мог выбрать снова.'
+    ),
+  }
 }
 
 export function buildPlanConfirmationPayload(optionId: string): PlanConfirmationPayload {
@@ -105,6 +162,45 @@ export function planOptionToDraft(option: InvitationPlanOption): PlanOptionDraft
     place: option.place,
     comment: option.comment,
   }
+}
+
+export function planOptionDraftsHaveChanges(
+  drafts: PlanOptionDraft[],
+  baseline: PlanOptionDraft[],
+): boolean {
+  if (drafts.length !== baseline.length) {
+    return true
+  }
+
+  return drafts.some((draft, index) => {
+    const savedDraft = baseline[index]!
+
+    return draft.startsAt !== savedDraft.startsAt
+      || draft.place !== savedDraft.place
+      || draft.comment !== savedDraft.comment
+  })
+}
+
+export function planningStepRequiresOptionSave(
+  isDirty: boolean,
+  persistedOptionCount: number,
+  requireCompleteStep: boolean,
+): boolean {
+  return isDirty || (
+    requireCompleteStep
+    && persistedOptionCount < MIN_PLAN_OPTIONS
+  )
+}
+
+export function planningModeChangeRemovesOptions(
+  currentMode: InvitationPlanningMode,
+  nextMode: InvitationPlanningMode,
+  isDirty: boolean,
+  persistedOptionCount: number,
+): boolean {
+  return currentMode === 'before_acceptance'
+    && nextMode === 'after_acceptance'
+    && (isDirty || persistedOptionCount > 0)
 }
 
 export function validatePlanOptionDrafts(
@@ -190,6 +286,45 @@ export function sortPlanOptions(options: InvitationPlanOption[]): InvitationPlan
   return [...options].sort((first, second) => (
     first.position - second.position || first.starts_at.localeCompare(second.starts_at)
   ))
+}
+
+export function getSelectablePlanOptions(
+  options: InvitationPlanOption[],
+  now: Date = new Date(),
+): InvitationPlanOption[] {
+  return sortPlanOptions(options).filter(option => !isPlanOptionExpired(option, now))
+}
+
+export function getPlanSelectionOptionState(
+  options: InvitationPlanOption[],
+  now: Date = new Date(),
+): PlanSelectionOptionState {
+  const selectableOptions = getSelectablePlanOptions(options, now)
+  let availability: PlanSelectionAvailability = 'available'
+
+  if (selectableOptions.length === 0) {
+    availability = options.length > 0 ? 'expired' : 'empty'
+  }
+
+  return {
+    availability,
+    options: selectableOptions,
+  }
+}
+
+export function getPlanSelectionScreenPresentation(
+  screen: InvitationScreenRecord | null,
+): PlanSelectionScreenPresentation {
+  if (screen?.screen_type !== 'date_selection') {
+    return { ...DEFAULT_PLAN_SELECTION_SCREEN }
+  }
+
+  return {
+    buttonText: screen.button_text.trim() || DEFAULT_PLAN_SELECTION_SCREEN.buttonText,
+    imageKey: screen.image_key,
+    subtitle: screen.subtitle.trim(),
+    title: screen.title.trim() || DEFAULT_PLAN_SELECTION_SCREEN.title,
+  }
 }
 
 export function findSelectedPlanOption(
@@ -310,6 +445,95 @@ export function formatPlanOptionDate(value: string): string {
     dateStyle: 'long',
     timeStyle: 'short',
   }).format(date)
+}
+
+type PlanningErrorRecord = Record<string, unknown>
+
+function isPlanningErrorRecord(value: unknown): value is PlanningErrorRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function extractPlanningErrorData(error: unknown): PlanningErrorRecord | null {
+  if (!isPlanningErrorRecord(error)) {
+    return null
+  }
+
+  if (isPlanningErrorRecord(error.data)) {
+    return error.data
+  }
+
+  if (
+    isPlanningErrorRecord(error.response)
+    && isPlanningErrorRecord(error.response._data)
+  ) {
+    return error.response._data
+  }
+
+  return null
+}
+
+function hasPlanningErrorMessage(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return Boolean(value.trim())
+  }
+
+  if (Array.isArray(value)) {
+    return value.some(hasPlanningErrorMessage)
+  }
+
+  if (isPlanningErrorRecord(value)) {
+    return Object.values(value).some(hasPlanningErrorMessage)
+  }
+
+  return false
+}
+
+export function parsePlanOptionsApiError(error: unknown): PlanOptionsApiError {
+  const parsedError = parsePlanningApiError(error, 'options')
+  const responseData = extractPlanningErrorData(error)
+  const rawOptions = responseData?.options
+  const optionErrors: PlanOptionDraftErrors[] = []
+  let formError: string | null = null
+
+  if (Array.isArray(rawOptions)) {
+    for (const item of rawOptions) {
+      if (!isPlanningErrorRecord(item)) {
+        if (hasPlanningErrorMessage(item)) {
+          formError = `Добавь от ${MIN_PLAN_OPTIONS} до ${MAX_PLAN_OPTIONS} вариантов.`
+        }
+        continue
+      }
+
+      const itemErrors: PlanOptionDraftErrors = {}
+
+      if (hasPlanningErrorMessage(item.starts_at)) {
+        itemErrors.startsAt = 'Выбери корректные будущие дату и время.'
+      }
+      if (hasPlanningErrorMessage(item.place)) {
+        itemErrors.place = `Укажи место длиной до ${PLAN_OPTION_PLACE_MAX_LENGTH} символов.`
+      }
+      if (hasPlanningErrorMessage(item.comment)) {
+        itemErrors.comment = `Комментарий должен быть не длиннее ${PLAN_OPTION_COMMENT_MAX_LENGTH} символов.`
+      }
+
+      optionErrors.push(itemErrors)
+    }
+  }
+  else if (hasPlanningErrorMessage(rawOptions)) {
+    formError = `Добавь от ${MIN_PLAN_OPTIONS} до ${MAX_PLAN_OPTIONS} вариантов.`
+  }
+
+  const hasFieldErrors = optionErrors.some(item => Object.keys(item).length > 0)
+
+  if (!formError && parsedError.status === 400 && !hasFieldErrors) {
+    formError = parsedError.message
+  }
+
+  return {
+    ...parsedError,
+    formError,
+    optionErrors,
+  }
 }
 
 export function parsePlanningApiError(

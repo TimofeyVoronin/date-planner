@@ -23,7 +23,7 @@ from apps.common.serializers import (
 
 
 class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
-    """Atomically replace the author's options for an accepted invitation."""
+    """Atomically replace options at the time selected by the invitation author."""
 
     queryset = Invitation.objects.select_for_update()
     serializer_class = InvitationPlanOptionsUpdateSerializer
@@ -49,8 +49,10 @@ class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
             status.HTTP_404_NOT_FOUND: OpenApiResponse(description="Invitation not found."),
             status.HTTP_409_CONFLICT: OpenApiResponse(
                 description=(
-                    "The invitation is not accepted, or its selection is still future-dated "
-                    "or already confirmed."
+                    "The invitation is not currently editable in its planning mode, or its "
+                    "selection is still future-dated or already confirmed. A published "
+                    "before-acceptance set can recover only after an unconfirmed selection "
+                    "expires; exact retries remain idempotent."
                 )
             ),
             status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
@@ -59,31 +61,11 @@ class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
         },
     )
     def put(self, request: Request, *args: object, **kwargs: object) -> Response:
-        """Replace all unselected options while preserving submitted order."""
+        """Replace options only in an editable or safely recoverable planning state."""
         with transaction.atomic():
             invitation = self.get_object()
             input_serializer = self.get_serializer(data=request.data)
             input_serializer.is_valid(raise_exception=True)
-            if invitation.response_status != Invitation.ResponseStatus.ACCEPTED:
-                return Response(
-                    {"detail": "Planning is available only for an accepted invitation."},
-                    status=status.HTTP_409_CONFLICT,
-                )
-            current_selection = invitation.plan_options.filter(selected_at__isnull=False).first()
-            if current_selection is not None:
-                selection_is_replaceable = (
-                    current_selection.confirmed_at is None and current_selection.starts_at <= now()
-                )
-                if not selection_is_replaceable:
-                    return Response(
-                        {
-                            "detail": (
-                                "Planning options cannot change while the selection is future "
-                                "or confirmed."
-                            )
-                        },
-                        status=status.HTTP_409_CONFLICT,
-                    )
 
             submitted_options = input_serializer.validated_data["options"]
             existing_options = list(invitation.plan_options.all())
@@ -97,6 +79,65 @@ class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
                     strict=True,
                 )
             )
+            current_selection = invitation.plan_options.filter(selected_at__isnull=False).first()
+            request_time = now()
+            selection_is_expired_and_unconfirmed = (
+                current_selection is not None
+                and current_selection.confirmed_at is None
+                and current_selection.starts_at <= request_time
+            )
+
+            if invitation.planning_mode == Invitation.PlanningMode.BEFORE_ACCEPTANCE:
+                draft_is_editable = (
+                    invitation.creation_mode == Invitation.CreationMode.EXTENDED
+                    and invitation.publication_status == Invitation.PublicationStatus.DRAFT
+                )
+                published_recovery_is_available = (
+                    invitation.creation_mode == Invitation.CreationMode.EXTENDED
+                    and invitation.publication_status == Invitation.PublicationStatus.PUBLISHED
+                    and invitation.response_status == Invitation.ResponseStatus.ACCEPTED
+                    and selection_is_expired_and_unconfirmed
+                )
+                published_retry_is_idempotent = (
+                    invitation.publication_status == Invitation.PublicationStatus.PUBLISHED
+                    and options_unchanged
+                )
+                planning_is_available = (
+                    draft_is_editable
+                    or published_recovery_is_available
+                    or published_retry_is_idempotent
+                )
+                planning_error = (
+                    "Published dates prepared before acceptance can change only after the "
+                    "selected, unconfirmed option has expired."
+                )
+            else:
+                planning_is_available = (
+                    invitation.response_status == Invitation.ResponseStatus.ACCEPTED
+                )
+                planning_error = "Planning is available only after the invitation is accepted."
+
+            if not planning_is_available:
+                return Response(
+                    {"detail": planning_error},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            if (
+                not options_unchanged
+                and current_selection is not None
+                and not selection_is_expired_and_unconfirmed
+            ):
+                return Response(
+                    {
+                        "detail": (
+                            "Planning options cannot change while the selection is future "
+                            "or confirmed."
+                        )
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
             if not options_unchanged:
                 InvitationPlanOption.objects.filter(invitation=invitation).delete()
                 InvitationPlanOption.objects.bulk_create(
