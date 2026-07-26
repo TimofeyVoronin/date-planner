@@ -266,6 +266,54 @@ class InvitationPlanOption(models.Model):
         return f"{self.invitation_id}: {self.starts_at} at {self.place}"
 
 
+class ActivityOption(models.Model):
+    """One ordered activity idea prepared for an extended invitation."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invitation = models.ForeignKey(
+        Invitation,
+        on_delete=models.CASCADE,
+        related_name="activity_options",
+    )
+    title = models.CharField(max_length=120)
+    description = models.CharField(max_length=500, blank=True, default="")
+    image_key = models.CharField(max_length=80, blank=True, default="")
+    place = models.CharField(max_length=200, blank=True, default="")
+    estimated_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    external_url = models.URLField(max_length=500, blank=True, default="")
+    position = models.PositiveSmallIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Keep each invitation's activity ideas in author-defined order."""
+
+        ordering = ("position",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("invitation", "position"),
+                name="unique_invitation_activity_option_position",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(position__gte=0, position__lte=5),
+                name="invitation_activity_option_position_range",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(estimated_price__isnull=True) | models.Q(estimated_price__gte=0),
+                name="invitation_activity_option_price_nonnegative",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return a concise description for diagnostics and admin tools."""
+        return f"{self.invitation_id}: {self.title}"
+
+
 INVITATION_RESPONSE_STATUS_CHOICES = Invitation.ResponseStatus.choices
 INVITATION_ANSWER_STATUS_CHOICES = (
     (
