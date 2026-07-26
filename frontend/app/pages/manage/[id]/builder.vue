@@ -8,18 +8,26 @@ import BuilderInvitationStep from '../../../../components/builder/BuilderInvitat
 import BuilderMobilePreview from '../../../../components/builder/BuilderMobilePreview.vue'
 import BuilderPlanningModeStep from '../../../../components/builder/BuilderPlanningModeStep.vue'
 import BuilderScreenConfigSummary from '../../../../components/builder/BuilderScreenConfigSummary.vue'
+import PlanOptionsEditor from '../../../../components/planning/PlanOptionsEditor.vue'
 import { useBuilderAutosave } from '../../../../composables/useBuilderAutosave'
+import { useExpiryClock } from '../../../../composables/useExpiryClock'
 import { useInvitationScreenAutosave } from '../../../../composables/useInvitationScreenAutosave'
 import { useInvitationsApi } from '../../../../composables/useInvitationsApi'
 import { useManagementToken } from '../../../../composables/useManagementToken'
 import type { BuilderPreviewScreen } from '../../../../types/builder-preview'
-import type { InvitationRecord } from '../../../../types/invitation'
+import type {
+  InvitationPlanOption,
+  InvitationPlanningMode,
+  InvitationRecord,
+  PlanOptionsPayload,
+} from '../../../../types/invitation'
 import type { InvitationImageKey } from '../../../../types/invitation-image'
 import type {
   InvitationScreenEditForm,
   InvitationScreenRecord,
   InvitationScreenType,
 } from '../../../../types/screen'
+import { buildBuilderPreviewDateOptions } from '../../../../utils/builderPreview'
 import {
   BUILDER_STEPS,
   builderStepSessionKey,
@@ -37,6 +45,13 @@ import {
   parseInvitationApiError,
   type InvitationApiError,
 } from '../../../../utils/invitations'
+import {
+  parsePlanOptionsApiError,
+  planningModeChangeRemovesOptions,
+  planningStepRequiresOptionSave,
+  planOptionsPayloadHasExpiredDate,
+  type PlanOptionDraft,
+} from '../../../../utils/planning'
 import {
   createInvitationScreenEditForm,
   getInvitationScreenByType,
@@ -56,9 +71,16 @@ const accessBlock = ref<BuilderAccessBlock | null>(null)
 const errorMessage = ref('')
 const canRetry = ref(true)
 const isStepNavigationReady = ref(false)
+const builderPlanOptions = ref<InvitationPlanOption[]>([])
+const previewPlanDrafts = ref<PlanOptionDraft[]>([])
+const planSaveState = ref<'error' | 'idle' | 'saving' | 'success'>('idle')
+const planSaveError = ref('')
+const planEditorDirty = ref(false)
+const planOptionsEditor = ref<InstanceType<typeof PlanOptionsEditor> | null>(null)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const managementPath = computed(() => `/manage/${encodeURIComponent(invitationId.value)}`)
 const { clearManagementToken, takeManagementToken } = useManagementToken(invitationId)
+const { currentTime, refreshCurrentTime, synchronizeServerTime } = useExpiryClock()
 const activeStep = computed(() => getBuilderStepDefinition(currentStep.value))
 const previousStep = computed(() => getPreviousBuilderStep(currentStep.value))
 const nextStep = computed(() => getNextBuilderStep(currentStep.value))
@@ -107,7 +129,16 @@ const autosave = useBuilderAutosave({
   },
   onSaved(nextInvitation) {
     invitation.value = nextInvitation
+    synchronizeServerTime(nextInvitation.server_now)
     accessBlock.value = getBuilderAccessBlock(nextInvitation)
+
+    if (nextInvitation.planning_mode === 'after_acceptance') {
+      builderPlanOptions.value = []
+      previewPlanDrafts.value = []
+      planEditorDirty.value = false
+      planSaveState.value = 'idle'
+      planSaveError.value = ''
+    }
 
     if (accessBlock.value) {
       pageState.value = 'blocked'
@@ -115,6 +146,33 @@ const autosave = useBuilderAutosave({
   },
   onAuthorizationError(error) {
     handleAuthorizationError(error)
+  },
+})
+
+const planningModeModel = computed<InvitationPlanningMode>({
+  get: () => autosave.form.planning_mode,
+  set: (mode) => {
+    if (planSaveState.value === 'saving') {
+      return
+    }
+
+    const removesPreparedOptions = planningModeChangeRemovesOptions(
+      autosave.form.planning_mode,
+      mode,
+      planEditorDirty.value,
+      builderPlanOptions.value.length,
+    )
+
+    if (
+      removesPreparedOptions
+      && !window.confirm(
+        'Подготовленные варианты будут удалены. Продолжить и добавлять даты после согласия?',
+      )
+    ) {
+      return
+    }
+
+    autosave.form.planning_mode = mode
   },
 })
 
@@ -200,12 +258,32 @@ const previewScreens = computed<Record<BuilderPreviewScreen, InvitationScreenEdi
     final: createInvitationScreenEditForm(finalScreen),
   }
 })
+const previewDateOptions = computed(() => (
+  autosave.form.planning_mode === 'before_acceptance'
+    ? buildBuilderPreviewDateOptions(previewPlanDrafts.value)
+    : []
+))
 const combinedAutosaveStatus = computed(() => {
   const statuses = [
     autosave.status.value,
     invitationScreenAutosave.status.value,
     acceptanceScreenAutosave.status.value,
   ]
+
+  if (currentStep.value === 2 && autosave.form.planning_mode === 'before_acceptance') {
+    if (planSaveState.value === 'error') {
+      statuses.push('error')
+    }
+    else if (planSaveState.value === 'saving') {
+      statuses.push('saving')
+    }
+    else if (planEditorDirty.value) {
+      statuses.push('dirty')
+    }
+    else if (planSaveState.value === 'success') {
+      statuses.push('saved')
+    }
+  }
 
   if (statuses.includes('error')) {
     return 'error' as const
@@ -227,6 +305,11 @@ const hasUnsavedStepChanges = computed(() => (
   autosave.hasUnsavedChanges.value
   || invitationScreenAutosave.hasUnsavedChanges.value
   || acceptanceScreenAutosave.hasUnsavedChanges.value
+  || (
+    currentStep.value === 2
+    && autosave.form.planning_mode === 'before_acceptance'
+    && (planEditorDirty.value || planSaveState.value === 'saving')
+  )
 ))
 
 const autosavePresentation = computed(() => {
@@ -300,8 +383,8 @@ async function restoreStepNavigation(): Promise<void> {
   isStepNavigationReady.value = true
 }
 
-async function flushCurrentStep(): Promise<boolean> {
-  if (!hasUnsavedStepChanges.value) {
+async function flushCurrentStep(requireCompleteStep = false): Promise<boolean> {
+  if (!hasUnsavedStepChanges.value && !requireCompleteStep) {
     return true
   }
 
@@ -320,16 +403,26 @@ async function flushCurrentStep(): Promise<boolean> {
     return invitationSaved && pageState.value === 'ready'
   }
 
-  if (currentStep.value === 2 && autosave.hasUnsavedChanges.value) {
-    const invitationSaved = await autosave.flush()
-    return invitationSaved && pageState.value === 'ready'
+  if (currentStep.value === 2) {
+    if (autosave.hasUnsavedChanges.value) {
+      const invitationSaved = await autosave.flush()
+      if (!invitationSaved || pageState.value !== 'ready') {
+        return false
+      }
+    }
+
+    if (autosave.form.planning_mode === 'before_acceptance') {
+      return flushPlanningOptions(requireCompleteStep)
+    }
   }
 
   return true
 }
 
 async function goToStep(step: BuilderStepNumber): Promise<void> {
-  if (step === currentStep.value || !await flushCurrentStep()) {
+  const requireCompleteStep = step > currentStep.value
+
+  if (step === currentStep.value || !await flushCurrentStep(requireCompleteStep)) {
     return
   }
 
@@ -364,6 +457,11 @@ async function loadBuilder(): Promise<void> {
   invitation.value = null
   screens.value = []
   accessBlock.value = null
+  builderPlanOptions.value = []
+  previewPlanDrafts.value = []
+  planEditorDirty.value = false
+  planSaveState.value = 'idle'
+  planSaveError.value = ''
 
   if (!isInvitationId(invitationId.value)) {
     errorMessage.value = 'Проверь адрес секретной ссылки.'
@@ -383,6 +481,8 @@ async function loadBuilder(): Promise<void> {
     const block = getBuilderAccessBlock(nextInvitation)
 
     invitation.value = nextInvitation
+    synchronizeServerTime(nextInvitation.server_now)
+    builderPlanOptions.value = nextInvitation.plan_options
     accessBlock.value = block
 
     if (block) {
@@ -415,6 +515,122 @@ async function loadBuilder(): Promise<void> {
     errorMessage.value = parsedError.message
     pageState.value = 'error'
   }
+}
+
+let activePlanSave: Promise<boolean> | null = null
+
+function handlePlanDirtyChange(isDirty: boolean): void {
+  planEditorDirty.value = isDirty
+}
+
+function handlePlanEdited(): void {
+  planSaveState.value = 'idle'
+  planSaveError.value = ''
+}
+
+function handlePlanDraftsChange(drafts: PlanOptionDraft[]): void {
+  previewPlanDrafts.value = drafts
+}
+
+async function persistPlanningOptions(payload: PlanOptionsPayload): Promise<boolean> {
+  if (activePlanSave) {
+    return activePlanSave
+  }
+
+  if (planOptionsPayloadHasExpiredDate(payload, refreshCurrentTime())) {
+    planSaveError.value = 'Одна из дат уже наступила. Обнови время и сохрани варианты снова.'
+    planSaveState.value = 'error'
+    return false
+  }
+
+  const token = takeManagementToken()
+
+  if (!token) {
+    pageState.value = 'missing-token'
+    return false
+  }
+
+  planSaveState.value = 'saving'
+  planSaveError.value = ''
+
+  const request = api.savePlanOptions(invitationId.value, token, payload)
+    .then((nextInvitation) => {
+      invitation.value = nextInvitation
+      synchronizeServerTime(nextInvitation.server_now)
+      builderPlanOptions.value = nextInvitation.plan_options
+      planEditorDirty.value = false
+      planSaveState.value = 'success'
+      return true
+    })
+    .catch((error: unknown) => {
+      const parsedError = parsePlanOptionsApiError(error)
+
+      if (parsedError.status === 401 || parsedError.status === 403) {
+        handleAuthorizationError(parsedError)
+        return false
+      }
+
+      planSaveError.value = parsedError.message
+      planSaveState.value = 'error'
+      planOptionsEditor.value?.applyServerErrors(
+        parsedError.formError,
+        parsedError.optionErrors,
+      )
+      return false
+    })
+
+  activePlanSave = request
+
+  try {
+    return await request
+  }
+  finally {
+    activePlanSave = null
+  }
+}
+
+async function savePlanningOptionsAfterMode(payload: PlanOptionsPayload): Promise<void> {
+  planSaveState.value = 'saving'
+  planSaveError.value = ''
+
+  if (autosave.hasUnsavedChanges.value) {
+    const invitationSaved = await autosave.flush()
+    if (!invitationSaved || pageState.value !== 'ready') {
+      planSaveState.value = 'idle'
+      return
+    }
+  }
+
+  if (autosave.form.planning_mode === 'before_acceptance') {
+    await persistPlanningOptions(payload)
+    return
+  }
+
+  planSaveState.value = 'idle'
+}
+
+function savePlanningOptions(payload: PlanOptionsPayload): void {
+  void savePlanningOptionsAfterMode(payload)
+}
+
+async function flushPlanningOptions(requireCompleteStep: boolean): Promise<boolean> {
+  if (activePlanSave) {
+    const saved = await activePlanSave
+    if (!saved) {
+      return false
+    }
+  }
+
+  if (!planningStepRequiresOptionSave(
+    planEditorDirty.value,
+    builderPlanOptions.value.length,
+    requireCompleteStep,
+  )) {
+    return true
+  }
+
+  const payload = planOptionsEditor.value?.preparePayload()
+  return payload ? persistPlanningOptions(payload) : false
 }
 
 function selectScreenImage(
@@ -465,7 +681,7 @@ onBeforeRouteUpdate(async (to) => {
   if (
     destinationStep
     && destinationStep !== currentStep.value
-    && !await flushCurrentStep()
+    && !await flushCurrentStep(destinationStep > currentStep.value)
   ) {
     return false
   }
@@ -636,7 +852,7 @@ onUnmounted(() => {
 
               <template v-else-if="currentStep === 2">
                 <BuilderPlanningModeStep
-                  v-model:planning-mode="autosave.form.planning_mode"
+                  v-model:planning-mode="planningModeModel"
                   :status="autosave.status.value"
                   :error-message="autosave.errorMessage.value"
                   :field-errors="autosave.fieldErrors.value"
@@ -644,23 +860,37 @@ onUnmounted(() => {
                   @retry="autosave.retry()"
                   @save-now="autosave.flush()"
                 />
+                <PlanOptionsEditor
+                  v-if="autosave.form.planning_mode === 'before_acceptance'"
+                  ref="planOptionsEditor"
+                  variant="builder"
+                  :current-time="currentTime"
+                  :options="builderPlanOptions"
+                  :save-error="planSaveError"
+                  :save-state="planSaveState"
+                  @dirty-change="handlePlanDirtyChange"
+                  @drafts-change="handlePlanDraftsChange"
+                  @edited="handlePlanEdited"
+                  @save="savePlanningOptions"
+                />
                 <section
-                  class="builder-stage__placeholder"
-                  aria-label="Редактор вариантов даты в следующей задаче"
+                  v-else
+                  class="builder-date-later"
+                  aria-labelledby="builder-date-later-title"
                 >
-                  <p>Следующая итерация</p>
-                  <h3>Добавление вариантов даты и времени</h3>
-                  <BuilderScreenConfigSummary :screens="summaryScreens" />
-                  <ul>
-                    <li v-for="feature in activeStep.plannedFeatures" :key="feature">
-                      <span aria-hidden="true">✓</span>
-                      {{ feature }}
-                    </li>
-                  </ul>
-                  <p class="builder-stage__notice">
-                    В DPL-302 здесь появится редактор двух–пяти вариантов. Сейчас сохраняется
-                    только безопасный сценарий: до публикации или после согласия.
-                  </p>
+                  <span class="builder-date-later__icon" aria-hidden="true">💬</span>
+                  <div>
+                    <p>После ответа получателя</p>
+                    <h3 id="builder-date-later-title">Даты пока добавлять не нужно</h3>
+                    <p>
+                      Опубликуй приглашение без вариантов. Когда получатель ответит «Да»,
+                      редактор появится на секретной странице управления.
+                    </p>
+                    <p>
+                      Такой сценарий не создаёт скрытых черновых дат и сохраняет прежний
+                      порядок согласования.
+                    </p>
+                  </div>
                 </section>
               </template>
 
@@ -694,6 +924,7 @@ onUnmounted(() => {
               v-if="previewScreens"
               :author-name="autosave.form.author_name"
               :builder-step="currentStep"
+              :date-options="previewDateOptions"
               :message="autosave.form.message"
               :recipient-name="autosave.form.recipient_name"
               :screens="previewScreens"

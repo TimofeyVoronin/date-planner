@@ -1,4 +1,5 @@
 import type { BuilderStepNumber } from './builder'
+import type { PlanOptionDraft } from './planning'
 import {
   BUILDER_PREVIEW_DEVICE_IDS,
   BUILDER_PREVIEW_SCREENS,
@@ -84,6 +85,25 @@ export const BUILDER_PREVIEW_ACTIVITIES: readonly BuilderPreviewDemoOption[] = [
     description: 'План узнает только получатель приглашения',
   },
 ]
+
+export function buildBuilderPreviewDateOptions(
+  drafts: PlanOptionDraft[],
+): BuilderPreviewDemoOption[] {
+  return drafts.map((draft, index) => {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(draft.startsAt)
+    const label = parts
+      ? `${parts[3]}.${parts[2]}.${parts[1]} · ${parts[4]}:${parts[5]}`
+      : 'Дата и время пока не указаны'
+    const place = draft.place.trim() || 'Место пока не указано'
+    const comment = draft.comment.trim()
+
+    return {
+      id: `draft-date-${index + 1}`,
+      label,
+      description: comment ? `${place} — ${comment}` : place,
+    }
+  })
+}
 
 const STEP_SCREEN_MAP: Readonly<Record<BuilderStepNumber, BuilderPreviewScreen>> = {
   1: 'invitation',

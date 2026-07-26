@@ -4,6 +4,7 @@ import {
   PLAN_OPTION_COMMENT_MAX_LENGTH,
   PLAN_OPTION_PLACE_MAX_LENGTH,
   type InvitationPlanOption,
+  type InvitationPlanningMode,
   type PlanConfirmationPayload,
   type PlanOptionPayload,
   type PlanOptionsPayload,
@@ -22,6 +23,11 @@ export type PlanOptionsValidation = {
   formError: string | null
   optionErrors: PlanOptionDraftErrors[]
   valid: boolean
+}
+
+export type PlanOptionsApiError = InvitationApiError & {
+  formError: string | null
+  optionErrors: PlanOptionDraftErrors[]
 }
 
 export type PlanConfirmationStage = 'confirmed' | 'expired' | 'hidden' | 'ready'
@@ -105,6 +111,45 @@ export function planOptionToDraft(option: InvitationPlanOption): PlanOptionDraft
     place: option.place,
     comment: option.comment,
   }
+}
+
+export function planOptionDraftsHaveChanges(
+  drafts: PlanOptionDraft[],
+  baseline: PlanOptionDraft[],
+): boolean {
+  if (drafts.length !== baseline.length) {
+    return true
+  }
+
+  return drafts.some((draft, index) => {
+    const savedDraft = baseline[index]!
+
+    return draft.startsAt !== savedDraft.startsAt
+      || draft.place !== savedDraft.place
+      || draft.comment !== savedDraft.comment
+  })
+}
+
+export function planningStepRequiresOptionSave(
+  isDirty: boolean,
+  persistedOptionCount: number,
+  requireCompleteStep: boolean,
+): boolean {
+  return isDirty || (
+    requireCompleteStep
+    && persistedOptionCount < MIN_PLAN_OPTIONS
+  )
+}
+
+export function planningModeChangeRemovesOptions(
+  currentMode: InvitationPlanningMode,
+  nextMode: InvitationPlanningMode,
+  isDirty: boolean,
+  persistedOptionCount: number,
+): boolean {
+  return currentMode === 'before_acceptance'
+    && nextMode === 'after_acceptance'
+    && (isDirty || persistedOptionCount > 0)
 }
 
 export function validatePlanOptionDrafts(
@@ -310,6 +355,95 @@ export function formatPlanOptionDate(value: string): string {
     dateStyle: 'long',
     timeStyle: 'short',
   }).format(date)
+}
+
+type PlanningErrorRecord = Record<string, unknown>
+
+function isPlanningErrorRecord(value: unknown): value is PlanningErrorRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function extractPlanningErrorData(error: unknown): PlanningErrorRecord | null {
+  if (!isPlanningErrorRecord(error)) {
+    return null
+  }
+
+  if (isPlanningErrorRecord(error.data)) {
+    return error.data
+  }
+
+  if (
+    isPlanningErrorRecord(error.response)
+    && isPlanningErrorRecord(error.response._data)
+  ) {
+    return error.response._data
+  }
+
+  return null
+}
+
+function hasPlanningErrorMessage(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return Boolean(value.trim())
+  }
+
+  if (Array.isArray(value)) {
+    return value.some(hasPlanningErrorMessage)
+  }
+
+  if (isPlanningErrorRecord(value)) {
+    return Object.values(value).some(hasPlanningErrorMessage)
+  }
+
+  return false
+}
+
+export function parsePlanOptionsApiError(error: unknown): PlanOptionsApiError {
+  const parsedError = parsePlanningApiError(error, 'options')
+  const responseData = extractPlanningErrorData(error)
+  const rawOptions = responseData?.options
+  const optionErrors: PlanOptionDraftErrors[] = []
+  let formError: string | null = null
+
+  if (Array.isArray(rawOptions)) {
+    for (const item of rawOptions) {
+      if (!isPlanningErrorRecord(item)) {
+        if (hasPlanningErrorMessage(item)) {
+          formError = `Добавь от ${MIN_PLAN_OPTIONS} до ${MAX_PLAN_OPTIONS} вариантов.`
+        }
+        continue
+      }
+
+      const itemErrors: PlanOptionDraftErrors = {}
+
+      if (hasPlanningErrorMessage(item.starts_at)) {
+        itemErrors.startsAt = 'Выбери корректные будущие дату и время.'
+      }
+      if (hasPlanningErrorMessage(item.place)) {
+        itemErrors.place = `Укажи место длиной до ${PLAN_OPTION_PLACE_MAX_LENGTH} символов.`
+      }
+      if (hasPlanningErrorMessage(item.comment)) {
+        itemErrors.comment = `Комментарий должен быть не длиннее ${PLAN_OPTION_COMMENT_MAX_LENGTH} символов.`
+      }
+
+      optionErrors.push(itemErrors)
+    }
+  }
+  else if (hasPlanningErrorMessage(rawOptions)) {
+    formError = `Добавь от ${MIN_PLAN_OPTIONS} до ${MAX_PLAN_OPTIONS} вариантов.`
+  }
+
+  const hasFieldErrors = optionErrors.some(item => Object.keys(item).length > 0)
+
+  if (!formError && parsedError.status === 400 && !hasFieldErrors) {
+    formError = parsedError.message
+  }
+
+  return {
+    ...parsedError,
+    formError,
+    optionErrors,
+  }
 }
 
 export function parsePlanningApiError(

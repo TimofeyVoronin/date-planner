@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   BUILDER_PREVIEW_ACTIVITIES,
   BUILDER_PREVIEW_DATES,
   BUILDER_PREVIEW_DEVICES,
   BUILDER_PREVIEW_SCREEN_DEFINITIONS,
+  buildBuilderPreviewDateOptions,
   getBuilderPreviewDevice,
   getBuilderPreviewNoButtonTransform,
   getBuilderPreviewScreenDefinition,
@@ -54,12 +56,60 @@ describe('builder interactive preview definitions', () => {
     expect(isBuilderPreviewDeviceId('tablet')).toBe(false)
   })
 
+  it('reserves enough desktop space for the largest phone preview', () => {
+    const css = readFileSync(
+      new URL('../app/assets/css/main.css', import.meta.url),
+      'utf8',
+    )
+    const phoneWidth = Number(
+      css.match(/--builder-preview-max-phone-width:\s*(\d+)px/)?.[1],
+    )
+    const scrollbarWidth = Number(
+      css.match(/--builder-preview-scrollbar-width:\s*(\d+)px/)?.[1],
+    )
+    const inlineReserve = Number(
+      css.match(/--builder-preview-inline-reserve:\s*(\d+)px/)?.[1],
+    )
+    const largestDeviceWidth = Math.max(
+      ...BUILDER_PREVIEW_DEVICES.map(device => device.width),
+    )
+
+    expect(phoneWidth).toBe(largestDeviceWidth)
+    expect(scrollbarWidth).toBeGreaterThan(0)
+    expect(inlineReserve).toBeGreaterThanOrEqual(70 + scrollbarWidth * 2)
+    expect(css).toContain(
+      'calc(var(--builder-preview-max-phone-width) + var(--builder-preview-inline-reserve))',
+    )
+    expect(css).toContain('scrollbar-gutter: stable')
+    expect(css).toContain(
+      'padding-inline: calc(20px + var(--builder-preview-scrollbar-width)) 20px',
+    )
+  })
+
   it('recognizes preview screens and clamps the runaway-button transform', () => {
     expect(isBuilderPreviewScreen('final')).toBe(true)
     expect(isBuilderPreviewScreen('manage')).toBe(false)
     expect(getBuilderPreviewNoButtonTransform(-5)).toEqual({ x: 0, y: 0, scale: 1 })
     expect(getBuilderPreviewNoButtonTransform(2)).toEqual({ x: -46, y: 18, scale: .84 })
     expect(getBuilderPreviewNoButtonTransform(99)).toEqual({ x: 34, y: 30, scale: .76 })
+  })
+
+  it('turns local builder drafts into live preview choices', () => {
+    expect(buildBuilderPreviewDateOptions([
+      { startsAt: '2030-01-02T18:30', place: ' Кофейня ', comment: ' У окна ' },
+      { startsAt: '', place: '', comment: '' },
+    ])).toEqual([
+      {
+        id: 'draft-date-1',
+        label: '02.01.2030 · 18:30',
+        description: 'Кофейня — У окна',
+      },
+      {
+        id: 'draft-date-2',
+        label: 'Дата и время пока не указаны',
+        description: 'Место пока не указано',
+      },
+    ])
   })
 
   it('keeps demonstration choices stable and unique', () => {
