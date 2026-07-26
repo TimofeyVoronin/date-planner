@@ -21,7 +21,7 @@ import {
 
 type PlanOptionsSaveState = 'error' | 'idle' | 'saving' | 'success'
 
-type EditorVariant = 'builder' | 'management'
+type EditorVariant = 'builder' | 'management' | 'recovery'
 type EditorRow = PlanOptionDraft & { key: number }
 
 type Props = {
@@ -66,8 +66,9 @@ const canAdd = computed(() => rows.value.length < MAX_PLAN_OPTIONS)
 const canRemove = computed(() => rows.value.length > MIN_PLAN_OPTIONS)
 const isSaving = computed(() => props.saveState === 'saving')
 const canSubmit = computed(() => isDirty.value && !isSaving.value)
-const copy = computed(() => props.variant === 'builder'
-  ? {
+const copy = computed(() => {
+  if (props.variant === 'builder') {
+    return {
       eyebrow: 'Варианты до публикации',
       title: 'Подготовь даты и места',
       description: (
@@ -77,16 +78,32 @@ const copy = computed(() => props.variant === 'builder'
       success: 'Варианты сохранены в черновике и готовы к публикации.',
       submit: 'Сохранить варианты в черновике',
     }
-  : {
-      eyebrow: 'Следующий шаг',
-      title: 'Предложи варианты свидания',
+  }
+
+  if (props.variant === 'recovery') {
+    return {
+      eyebrow: 'Новый набор',
+      title: 'Предложи актуальные варианты',
       description: (
-        `Добавь от ${MIN_PLAN_OPTIONS} до ${MAX_PLAN_OPTIONS} вариантов. `
-        + 'Получатель выберет один на своей странице.'
+        `Добавь от ${MIN_PLAN_OPTIONS} до ${MAX_PLAN_OPTIONS} будущих вариантов. `
+        + 'Сохранение удалит устаревший набор и сбросит прошлый выбор получателя.'
       ),
-      success: 'Варианты сохранены — получатель сможет выбрать один по публичной ссылке.',
-      submit: 'Сохранить варианты',
-    })
+      success: 'Новый набор сохранён — получатель может выбрать актуальный вариант.',
+      submit: 'Заменить устаревшие варианты',
+    }
+  }
+
+  return {
+    eyebrow: 'Следующий шаг',
+    title: 'Предложи варианты свидания',
+    description: (
+      `Добавь от ${MIN_PLAN_OPTIONS} до ${MAX_PLAN_OPTIONS} вариантов. `
+      + 'Получатель выберет один на своей странице.'
+    ),
+    success: 'Варианты сохранены — получатель сможет выбрать один по публичной ссылке.',
+    submit: 'Сохранить варианты',
+  }
+})
 const statusPresentation = computed(() => {
   if (props.saveState === 'saving') {
     return { icon: '⏳', label: 'Сохранение…', tone: 'saving' }

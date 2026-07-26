@@ -50,18 +50,27 @@ def planning_path(invitation: Invitation) -> str:
     return f"/api/v1/invitations/{invitation.pk}/plan-options/"
 
 
+def selection_path(invitation: Invitation) -> str:
+    """Return the recipient planning selection path."""
+    return f"/api/v1/invitations/{invitation.pk}/selection/"
+
+
 def publication_path(invitation: Invitation) -> str:
     """Return the protected publication path."""
     return f"/api/v1/invitations/{invitation.pk}/publish/"
 
 
-def plan_payload(*, days: int = 20) -> dict[str, list[dict[str, str]]]:
+def plan_payload(
+    *,
+    days: int = 20,
+    prefix: str = "Место",
+) -> dict[str, list[dict[str, str]]]:
     """Build two valid future options."""
     return {
         "options": [
             {
                 "starts_at": (now() + timedelta(days=days + index)).isoformat(),
-                "place": f"Место {index + 1}",
+                "place": f"{prefix} {index + 1}",
                 "comment": "",
             }
             for index in range(2)
@@ -404,6 +413,232 @@ def test_published_preconfigured_options_cannot_be_replaced() -> None:
     ]
 
 
+def test_published_preconfigured_options_recover_after_expired_selection() -> None:
+    """An expired unconfirmed choice reopens only the published option collection."""
+    client = APIClient()
+    invitation, token = create_invitation(
+        client,
+        planning_mode=Invitation.PlanningMode.BEFORE_ACCEPTANCE,
+    )
+    create_options(invitation)
+    original_options = list(invitation.plan_options.all())
+    original_ids = [option.pk for option in original_options]
+
+    publish = client.put(
+        publication_path(invitation),
+        {},
+        format="json",
+        **authorization(token),
+    )
+    accepted = client.put(
+        f"/api/v1/invitations/{invitation.pk}/response/",
+        {"response_status": Invitation.ResponseStatus.ACCEPTED},
+        format="json",
+    )
+    selected = client.put(
+        selection_path(invitation),
+        {"option_id": str(original_options[0].pk)},
+        format="json",
+    )
+    assert publish.status_code == status.HTTP_200_OK
+    assert accepted.status_code == status.HTTP_200_OK
+    assert selected.status_code == status.HTTP_200_OK
+
+    original_options[0].starts_at = now() - timedelta(seconds=1)
+    original_options[0].save(update_fields=("starts_at",))
+    invitation.refresh_from_db()
+    previous_updated_at = invitation.updated_at
+    replacement_payload = plan_payload(days=40, prefix="Новый вариант")
+
+    response = client.put(
+        planning_path(invitation),
+        replacement_payload,
+        format="json",
+        **authorization(token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["planning_mode"] == Invitation.PlanningMode.BEFORE_ACCEPTANCE
+    assert body["publication_status"] == Invitation.PublicationStatus.PUBLISHED
+    assert body["response_status"] == Invitation.ResponseStatus.ACCEPTED
+    assert body["selected_option_id"] is None
+    assert body["selected_at"] is None
+    assert body["confirmed_at"] is None
+    assert [option["place"] for option in body["plan_options"]] == [
+        "Новый вариант 1",
+        "Новый вариант 2",
+    ]
+    assert not InvitationPlanOption.objects.filter(pk__in=original_ids).exists()
+    invitation.refresh_from_db()
+    assert invitation.updated_at > previous_updated_at
+
+    public = client.get(f"/api/v1/invitations/{invitation.pk}/")
+    assert public.status_code == status.HTTP_200_OK
+    assert public.json()["selected_option_id"] is None
+    assert [option["id"] for option in public.json()["plan_options"]] == [
+        option["id"] for option in body["plan_options"]
+    ]
+
+
+def test_preconfigured_recovery_exact_retry_is_idempotent() -> None:
+    """Retrying a successful recovery keeps option identifiers and timestamps stable."""
+    client = APIClient()
+    invitation, token = create_invitation(
+        client,
+        planning_mode=Invitation.PlanningMode.BEFORE_ACCEPTANCE,
+    )
+    create_options(invitation)
+    selected_option = invitation.plan_options.first()
+    assert selected_option is not None
+    publish = client.put(
+        publication_path(invitation),
+        {},
+        format="json",
+        **authorization(token),
+    )
+    accepted = client.put(
+        f"/api/v1/invitations/{invitation.pk}/response/",
+        {"response_status": Invitation.ResponseStatus.ACCEPTED},
+        format="json",
+    )
+    assert publish.status_code == status.HTTP_200_OK
+    assert accepted.status_code == status.HTTP_200_OK
+    selected_option.selected_at = now() - timedelta(minutes=2)
+    selected_option.starts_at = now() - timedelta(minutes=1)
+    selected_option.save(update_fields=("selected_at", "starts_at"))
+    payload = plan_payload(days=50, prefix="Повтор")
+
+    first = client.put(
+        planning_path(invitation),
+        payload,
+        format="json",
+        **authorization(token),
+    )
+    assert first.status_code == status.HTTP_200_OK
+    invitation.refresh_from_db()
+    first_updated_at = invitation.updated_at
+    first_ids = [option["id"] for option in first.json()["plan_options"]]
+
+    repeated = client.put(
+        planning_path(invitation),
+        payload,
+        format="json",
+        **authorization(token),
+    )
+
+    assert repeated.status_code == status.HTTP_200_OK
+    assert [option["id"] for option in repeated.json()["plan_options"]] == first_ids
+    invitation.refresh_from_db()
+    assert invitation.updated_at == first_updated_at
+
+
+def test_preconfigured_future_or_confirmed_selection_cannot_recover() -> None:
+    """A future choice and a final plan keep a published preconfigured set immutable."""
+    client = APIClient()
+    invitation, token = create_invitation(
+        client,
+        planning_mode=Invitation.PlanningMode.BEFORE_ACCEPTANCE,
+    )
+    create_options(invitation)
+    option = invitation.plan_options.first()
+    assert option is not None
+    publish = client.put(
+        publication_path(invitation),
+        {},
+        format="json",
+        **authorization(token),
+    )
+    accepted = client.put(
+        f"/api/v1/invitations/{invitation.pk}/response/",
+        {"response_status": Invitation.ResponseStatus.ACCEPTED},
+        format="json",
+    )
+    assert publish.status_code == status.HTTP_200_OK
+    assert accepted.status_code == status.HTTP_200_OK
+    selected = client.put(
+        selection_path(invitation),
+        {"option_id": str(option.pk)},
+        format="json",
+    )
+    assert selected.status_code == status.HTTP_200_OK
+    original_ids = list(invitation.plan_options.values_list("id", flat=True))
+
+    future_response = client.put(
+        planning_path(invitation),
+        plan_payload(days=60, prefix="Запрещено"),
+        format="json",
+        **authorization(token),
+    )
+    assert future_response.status_code == status.HTTP_409_CONFLICT
+    assert list(invitation.plan_options.values_list("id", flat=True)) == original_ids
+
+    expired_starts_at = now() - timedelta(seconds=1)
+    confirmed_at = expired_starts_at - timedelta(seconds=1)
+    selected_at = confirmed_at - timedelta(seconds=1)
+    InvitationPlanOption.objects.filter(pk=option.pk).update(
+        starts_at=expired_starts_at,
+        selected_at=selected_at,
+        confirmed_at=confirmed_at,
+    )
+
+    confirmed_response = client.put(
+        planning_path(invitation),
+        plan_payload(days=70, prefix="Тоже запрещено"),
+        format="json",
+        **authorization(token),
+    )
+
+    assert confirmed_response.status_code == status.HTTP_409_CONFLICT
+    assert list(invitation.plan_options.values_list("id", flat=True)) == original_ids
+
+
+def test_invalid_preconfigured_recovery_preserves_expired_selection() -> None:
+    """Recovery validates the complete new set before deleting the expired selection."""
+    client = APIClient()
+    invitation, token = create_invitation(
+        client,
+        planning_mode=Invitation.PlanningMode.BEFORE_ACCEPTANCE,
+    )
+    create_options(invitation)
+    option = invitation.plan_options.first()
+    assert option is not None
+    publish = client.put(
+        publication_path(invitation),
+        {},
+        format="json",
+        **authorization(token),
+    )
+    accepted = client.put(
+        f"/api/v1/invitations/{invitation.pk}/response/",
+        {"response_status": Invitation.ResponseStatus.ACCEPTED},
+        format="json",
+    )
+    assert publish.status_code == status.HTTP_200_OK
+    assert accepted.status_code == status.HTTP_200_OK
+    option.selected_at = now() - timedelta(minutes=2)
+    option.starts_at = now() - timedelta(minutes=1)
+    option.save(update_fields=("selected_at", "starts_at"))
+    original_ids = list(invitation.plan_options.values_list("id", flat=True))
+    invitation.refresh_from_db()
+    previous_updated_at = invitation.updated_at
+
+    response = client.put(
+        planning_path(invitation),
+        {"options": plan_payload(days=80)["options"][:1]},
+        format="json",
+        **authorization(token),
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert list(invitation.plan_options.values_list("id", flat=True)) == original_ids
+    option.refresh_from_db()
+    invitation.refresh_from_db()
+    assert option.selected_at is not None
+    assert option.confirmed_at is None
+    assert invitation.updated_at == previous_updated_at
+
+
 def test_preconfigured_publication_requires_two_future_options() -> None:
     """The service does not publish a flow that cannot proceed after acceptance."""
     client = APIClient()
@@ -479,4 +714,9 @@ def test_openapi_documents_planning_mode_and_publication_conflict() -> None:
     assert Invitation.PlanningMode.BEFORE_ACCEPTANCE in serialized_components
     assert Invitation.PlanningMode.AFTER_ACCEPTANCE in serialized_components
     publication_responses = schema["paths"]["/api/v1/invitations/{id}/publish/"]["put"]["responses"]
+    planning_responses = schema["paths"]["/api/v1/invitations/{id}/plan-options/"]["put"][
+        "responses"
+    ]
     assert "409" in publication_responses
+    assert "409" in planning_responses
+    assert "before-acceptance" in planning_responses["409"]["description"]

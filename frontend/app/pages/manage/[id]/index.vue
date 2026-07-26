@@ -31,6 +31,7 @@ import {
   findSelectedPlanOption,
   formatPlanOptionDate,
   getPlanConfirmationStage,
+  getPlanRecoveryPresentation,
   parsePlanConfirmationApiError,
   parsePlanOptionsApiError,
   planOptionsPayloadHasExpiredDate,
@@ -100,6 +101,9 @@ const confirmationStage = computed(() => getPlanConfirmationStage(
   invitation.value?.confirmed_at ?? null,
   currentTime.value,
   serverExpiredSelectionId.value,
+))
+const planRecoveryPresentation = computed(() => getPlanRecoveryPresentation(
+  invitation.value?.planning_mode ?? 'after_acceptance',
 ))
 
 useHead({
@@ -726,10 +730,7 @@ onUnmounted(() => {
               </button>
             </section>
 
-            <template
-              v-else-if="confirmationStage === 'expired'
-                && invitation.planning_mode === 'after_acceptance'"
-            >
+            <template v-else-if="confirmationStage === 'expired'">
               <section
                 class="plan-recovery"
                 aria-labelledby="plan-recovery-title"
@@ -738,16 +739,13 @@ onUnmounted(() => {
               >
                 <span class="plan-recovery__icon" aria-hidden="true">🕰️</span>
                 <div>
-                  <p>Нужно обновить план</p>
+                  <p>{{ planRecoveryPresentation.eyebrow }}</p>
                   <h2 id="plan-recovery-title">Время выбранного варианта уже прошло</h2>
                   <p v-if="selectedPlanOption">
                     Получатель выбирал «{{ selectedPlanOption.place }}» —
                     {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}.
                   </p>
-                  <p>
-                    Исправь даты или предложи новый набор ниже. Сохранение заменит устаревшие
-                    варианты и сбросит прежний выбор, чтобы получатель мог выбрать снова.
-                  </p>
+                  <p>{{ planRecoveryPresentation.description }}</p>
                 </div>
               </section>
 
@@ -757,6 +755,7 @@ onUnmounted(() => {
                 :options="invitation.plan_options"
                 :save-error="planSaveError"
                 :save-state="planSaveState"
+                variant="recovery"
                 @dirty-change="markPlanDirty"
                 @edited="markPlanEdited"
                 @save="savePlanningOptions"
@@ -785,10 +784,11 @@ onUnmounted(() => {
               <span class="plan-recovery__icon" aria-hidden="true">🔒</span>
               <div>
                 <p>Даты подготовлены заранее</p>
-                <h2>Опубликованный набор защищён от замены</h2>
+                <h2>Опубликованный набор защищён от обычной замены</h2>
                 <p>
-                  Получатель выбирает из вариантов, которые были опубликованы вместе с
-                  приглашением. Восстановление просроченного набора появится в DPL-304.
+                  Получатель выбирает из вариантов, опубликованных вместе с приглашением.
+                  Редактор откроется только если выбранный, но ещё не подтверждённый вариант
+                  успеет пройти.
                 </p>
               </div>
             </section>
