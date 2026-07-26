@@ -16,6 +16,8 @@ These rules apply to the entire repository.
 - Keep the invitation and acceptance screen editors independent: each owns its autosave state and image selection, while navigation must flush both resources before leaving the first builder step.
 - Keep builder preview state client-only and independent from autosave: it may use demonstration dates and activities, but must never send them to the API or read the management token. Sync its default screen to the builder step while preserving direct user interaction within that step.
 - Treat `Invitation.planning_mode` as a lifecycle contract: quick invitations always plan after acceptance, preconfigured options are editable only in an extended draft, pending or declined recipients cannot read those options, and publication freezes the chosen mode and option set.
+- Reuse one date-option editor across the builder and management page. Preserve submitted array order as `position`, keep two–five future options as the shared validation contract, and flush valid dirty drafts before navigation.
+- Keep builder date preview data client-only: it may reflect unsaved local option drafts immediately, but demonstration values and preview selections must never be persisted through the planning API.
 - Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 

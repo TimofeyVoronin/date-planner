@@ -32,7 +32,7 @@ import {
   formatPlanOptionDate,
   getPlanConfirmationStage,
   parsePlanConfirmationApiError,
-  parsePlanningApiError,
+  parsePlanOptionsApiError,
   planOptionsPayloadHasExpiredDate,
   reconcileServerExpiredSelectionId,
   shouldAnnounceNewFinalPlan,
@@ -66,7 +66,14 @@ const invitationEditState = ref<InvitationEditSaveState>('idle')
 const invitationEditError = ref('')
 const invitationEditFieldErrors = ref<InvitationValidationErrors>({})
 const hasUnsavedInvitationChanges = ref(false)
+const hasUnsavedPlanChanges = ref(false)
+const planOptionsEditor = ref<InstanceType<typeof PlanOptionsEditor> | null>(null)
 const serverExpiredSelectionId = ref<string | null>(null)
+const hasUnsavedPageChanges = computed(() => (
+  hasUnsavedInvitationChanges.value
+  || hasUnsavedPlanChanges.value
+  || planSaveState.value === 'saving'
+))
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const builderPath = computed(() => buildBuilderPath(invitationId.value))
 const { clearManagementToken, takeManagementToken } = useManagementToken(invitationId)
@@ -148,6 +155,7 @@ async function loadManagedInvitation(): Promise<void> {
     invitationEditError.value = ''
     invitationEditFieldErrors.value = {}
     hasUnsavedInvitationChanges.value = false
+    hasUnsavedPlanChanges.value = false
     pageState.value = 'ready'
   }
   catch (error: unknown) {
@@ -368,7 +376,11 @@ async function confirmSelectedPlan(): Promise<void> {
   }
 }
 
-function markPlanDirty(): void {
+function markPlanDirty(isDirty: boolean): void {
+  hasUnsavedPlanChanges.value = isDirty
+}
+
+function markPlanEdited(): void {
   planSaveState.value = 'idle'
   planSaveError.value = ''
 }
@@ -399,10 +411,11 @@ async function savePlanningOptions(payload: PlanOptionsPayload): Promise<void> {
 
     applyManagedInvitation(nextInvitation)
     planSaveState.value = 'success'
+    hasUnsavedPlanChanges.value = false
     confirmationJustCompleted.value = false
   }
   catch (error: unknown) {
-    const parsedError = parsePlanningApiError(error, 'options')
+    const parsedError = parsePlanOptionsApiError(error)
 
     if (parsedError.status === 401 || parsedError.status === 403) {
       clearManagementToken()
@@ -414,6 +427,10 @@ async function savePlanningOptions(payload: PlanOptionsPayload): Promise<void> {
 
     planSaveError.value = parsedError.message
     planSaveState.value = 'error'
+    planOptionsEditor.value?.applyServerErrors(
+      parsedError.formError,
+      parsedError.optionErrors,
+    )
   }
 }
 
@@ -439,7 +456,7 @@ function formatDate(value: string): string {
 }
 
 function warnBeforeUnload(event: BeforeUnloadEvent): void {
-  if (!hasUnsavedInvitationChanges.value) {
+  if (!hasUnsavedPageChanges.value) {
     return
   }
 
@@ -448,7 +465,7 @@ function warnBeforeUnload(event: BeforeUnloadEvent): void {
 }
 
 onBeforeRouteLeave(() => {
-  if (!hasUnsavedInvitationChanges.value) {
+  if (!hasUnsavedPageChanges.value) {
     return true
   }
 
@@ -735,11 +752,13 @@ onUnmounted(() => {
               </section>
 
               <PlanOptionsEditor
+                ref="planOptionsEditor"
                 :current-time="currentTime"
                 :options="invitation.plan_options"
                 :save-error="planSaveError"
                 :save-state="planSaveState"
-                @dirty="markPlanDirty"
+                @dirty-change="markPlanDirty"
+                @edited="markPlanEdited"
                 @save="savePlanningOptions"
               />
             </template>
@@ -747,11 +766,13 @@ onUnmounted(() => {
             <PlanOptionsEditor
               v-else-if="invitation.response_status === 'accepted'
                 && invitation.planning_mode === 'after_acceptance'"
+              ref="planOptionsEditor"
               :current-time="currentTime"
               :options="invitation.plan_options"
               :save-error="planSaveError"
               :save-state="planSaveState"
-              @dirty="markPlanDirty"
+              @dirty-change="markPlanDirty"
+              @edited="markPlanEdited"
               @save="savePlanningOptions"
             />
 

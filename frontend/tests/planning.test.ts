@@ -11,8 +11,12 @@ import {
   isPlanOptionExpired,
   localDateTimeToIso,
   parsePlanningApiError,
+  parsePlanOptionsApiError,
   parsePlanConfirmationApiError,
+  planningModeChangeRemovesOptions,
+  planningStepRequiresOptionSave,
   planDraftsToPayload,
+  planOptionDraftsHaveChanges,
   planOptionsPayloadHasExpiredDate,
   reconcileServerExpiredSelectionId,
   refreshPlanSelectionAfterRejection,
@@ -100,6 +104,107 @@ describe('planning validation and payload', () => {
 
     expect(validation.optionErrors[0]?.place).toContain('200')
     expect(validation.optionErrors[0]?.comment).toContain('500')
+  })
+
+  it('detects value and ordering changes against the saved draft baseline', () => {
+    expect(planOptionDraftsHaveChanges(futureDrafts, futureDrafts.map(item => ({ ...item }))))
+      .toBe(false)
+    expect(planOptionDraftsHaveChanges([...futureDrafts].reverse(), futureDrafts)).toBe(true)
+    expect(planOptionDraftsHaveChanges([
+      { ...futureDrafts[0], place: 'Другое место' },
+      futureDrafts[1],
+    ], futureDrafts)).toBe(true)
+    expect(planOptionDraftsHaveChanges(futureDrafts.slice(0, 1), futureDrafts)).toBe(true)
+  })
+
+  it('requires valid options before moving forward but not before moving back', () => {
+    expect(planningStepRequiresOptionSave(false, 0, true)).toBe(true)
+    expect(planningStepRequiresOptionSave(false, 0, false)).toBe(false)
+    expect(planningStepRequiresOptionSave(false, 2, true)).toBe(false)
+    expect(planningStepRequiresOptionSave(true, 2, false)).toBe(true)
+  })
+
+  it('warns when changing the mode would delete saved or unsaved draft options', () => {
+    expect(planningModeChangeRemovesOptions(
+      'before_acceptance',
+      'after_acceptance',
+      false,
+      2,
+    )).toBe(true)
+    expect(planningModeChangeRemovesOptions(
+      'before_acceptance',
+      'after_acceptance',
+      true,
+      0,
+    )).toBe(true)
+    expect(planningModeChangeRemovesOptions(
+      'after_acceptance',
+      'before_acceptance',
+      true,
+      2,
+    )).toBe(false)
+    expect(planningModeChangeRemovesOptions(
+      'before_acceptance',
+      'after_acceptance',
+      false,
+      0,
+    )).toBe(false)
+  })
+
+  it('maps nested backend option errors to specific editor fields', () => {
+    const parsed = parsePlanOptionsApiError({
+      status: 400,
+      data: {
+        options: [
+          { starts_at: ['The proposed time must be in the future.'] },
+          { place: ['This field may not be blank.'], comment: ['Too long.'] },
+        ],
+      },
+    })
+
+    expect(parsed.formError).toBeNull()
+    expect(parsed.optionErrors).toEqual([
+      { startsAt: 'Выбери корректные будущие дату и время.' },
+      {
+        place: 'Укажи место длиной до 200 символов.',
+        comment: 'Комментарий должен быть не длиннее 500 символов.',
+      },
+    ])
+  })
+
+  it('maps option-count errors to the whole editor', () => {
+    const parsed = parsePlanOptionsApiError({
+      statusCode: 400,
+      response: {
+        status: 400,
+        _data: { options: ['Ensure this field has at least 2 elements.'] },
+      },
+    })
+
+    expect(parsed.formError).toContain('от 2 до 5')
+    expect(parsed.optionErrors).toEqual([])
+  })
+
+  it('falls back to a form-level message for an unknown validation response', () => {
+    const parsed = parsePlanOptionsApiError({
+      status: 400,
+      data: { detail: 'Invalid option set.' },
+    })
+
+    expect(parsed.formError).toContain('Проверь')
+    expect(parsed.optionErrors).toEqual([])
+  })
+
+  it('recognizes non-field option-list errors and transport failures', () => {
+    expect(parsePlanOptionsApiError({
+      status: 400,
+      data: { options: { non_field_errors: ['Invalid list.'] } },
+    }).formError).toContain('от 2 до 5')
+
+    const transportError = parsePlanOptionsApiError(new Error('offline'))
+    expect(transportError.status).toBeNull()
+    expect(transportError.formError).toBeNull()
+    expect(transportError.optionErrors).toEqual([])
   })
 
   it('trims text and serializes local datetimes for the API', () => {
