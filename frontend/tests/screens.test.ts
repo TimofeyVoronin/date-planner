@@ -192,6 +192,35 @@ describe('invitation screen configuration', () => {
     }, 'acceptance').secondary_button_text).toBeUndefined()
   })
 
+  it('builds and validates the editable final screen without an action button', () => {
+    const screen = screens[4]!
+    const form = createInvitationScreenEditForm(screen)
+
+    form.title = '  До встречи!  '
+    form.subtitle = '  Наш план подтверждён.  '
+    form.button_text = ''
+    form.image_key = 'final-night'
+    form.template_text = '  {recipient}, {author} ждёт тебя {date} в {time}: {activity} — {place}.  '
+
+    expect(buildInvitationScreenUpdatePayload(form, screen)).toEqual({
+      title: 'До встречи!',
+      subtitle: 'Наш план подтверждён.',
+      image_key: 'final-night',
+      template_text: '{recipient}, {author} ждёт тебя {date} в {time}: {activity} — {place}.',
+    })
+    expect(validateInvitationScreenEditForm(form, 'final')).toEqual({})
+    expect(validateInvitationScreenEditForm({
+      ...form,
+      title: ' ',
+      image_key: 'invitation-default',
+      template_text: '{author.name}',
+    }, 'final')).toMatchObject({
+      title: expect.any(String),
+      image_key: expect.any(String),
+      template_text: expect.any(String),
+    })
+  })
+
   it('validates required actions, limits, and compatible image choice', () => {
     const screen = screens[0]!
 
@@ -213,11 +242,17 @@ describe('invitation screen configuration', () => {
     expect(normalizeInvitationScreen(screens[0])).toEqual(screens[0])
     expect(parseInvitationScreenApiError({
       statusCode: 400,
-      data: { title: ['Обязательное поле.'] },
+      data: {
+        template_text: ['Неизвестная переменная.'],
+        title: ['Обязательное поле.'],
+      },
     })).toMatchObject({
       status: 400,
       message: 'Проверь заполненные поля экрана.',
-      fieldErrors: { title: 'Обязательное поле.' },
+      fieldErrors: {
+        template_text: 'Неизвестная переменная.',
+        title: 'Обязательное поле.',
+      },
     })
   })
 })

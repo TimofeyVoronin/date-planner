@@ -150,7 +150,7 @@ class InvitationAcceptanceScreenUpdateView(InvitationScreenUpdateView):
 
 
 class InvitationFinalScreenUpdateView(InvitationScreenUpdateView):
-    """Update only the safe final-message template of an extended draft."""
+    """Update the presentation and safe message of an extended draft final screen."""
 
     serializer_class = InvitationFinalScreenUpdateSerializer
     screen_type = InvitationScreen.ScreenType.FINAL

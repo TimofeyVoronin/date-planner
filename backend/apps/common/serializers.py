@@ -146,16 +146,33 @@ class InvitationPrimaryScreenUpdateSerializer(InvitationScreenUpdateSerializer):
 
 
 class InvitationFinalScreenUpdateSerializer(InvitationScreenUpdateSerializer):
-    """Validate the safe variable template used by the final screen."""
+    """Validate the editable presentation and safe copy of the final screen."""
 
-    editable_fields = ("template_text",)
+    editable_fields = (
+        "title",
+        "subtitle",
+        "image_key",
+        "template_text",
+    )
 
     class Meta:
-        """Expose only the template until the full final-screen editor arrives."""
+        """Expose only recipient-facing final-screen presentation fields."""
 
         model = InvitationScreen
-        fields = ("template_text",)
+        fields = (
+            "title",
+            "subtitle",
+            "image_key",
+            "template_text",
+        )
         extra_kwargs = {
+            "title": {"min_length": 1, "trim_whitespace": True},
+            "subtitle": {"allow_blank": True, "trim_whitespace": True},
+            "image_key": {
+                "min_length": 1,
+                "allow_blank": False,
+                "trim_whitespace": True,
+            },
             "template_text": {
                 "min_length": 1,
                 "allow_blank": False,

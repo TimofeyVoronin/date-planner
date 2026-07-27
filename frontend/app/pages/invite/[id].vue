@@ -509,7 +509,7 @@ onMounted(loadInvitation)
               :confirmed-at="invitation.confirmed_at"
               :option="selectedPlanOption"
               :recipient-name="invitation.recipient_name"
-              :template-text="finalScreen?.template_text"
+              :screen="finalScreen"
             />
             <section v-else class="plan-data-error" role="alert">
               Итоговый план не удалось загрузить. Обнови страницу и попробуй снова.
