@@ -14,7 +14,13 @@ from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
 from apps.common.capabilities import generate_management_token, hash_management_token
-from apps.common.models import Invitation, InvitationPlanOption
+from apps.common.models import (
+    ActivityOption,
+    ConfirmedPlan,
+    Invitation,
+    InvitationPlanOption,
+    InvitationScreen,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -152,6 +158,155 @@ def test_author_confirms_selected_future_option_once() -> None:
     assert options[0].confirmed_at == confirmed_at
     assert options[1].confirmed_at is None
     assert invitation.updated_at > invitation_updated_at
+
+
+def test_confirmation_creates_one_shared_immutable_snapshot() -> None:
+    """Author and recipient receive the exact same frozen final-card payload."""
+    invitation, token = create_invitation(
+        author_name="Алиса",
+        recipient_name="Борис",
+    )
+    invitation.creation_mode = Invitation.CreationMode.EXTENDED
+    invitation.save(update_fields=("creation_mode",))
+    final_screen = InvitationScreen.objects.create(
+        invitation=invitation,
+        screen_type=InvitationScreen.ScreenType.FINAL,
+        title="Наш план готов",
+        subtitle="До встречи совсем скоро",
+        image_key="final-night",
+        template_text=(
+            "{recipient}, {author} ждёт тебя {date} в {time}. "
+            "Место: {place}. Активность: {activity}."
+        ),
+    )
+    selected_at = datetime(2029, 12, 20, 12, 0, tzinfo=UTC)
+    starts_at = datetime(2030, 1, 1, 15, 0, tzinfo=UTC)
+    option = InvitationPlanOption.objects.create(
+        invitation=invitation,
+        starts_at=starts_at,
+        time_zone="Europe/Moscow",
+        place="Кафе на набережной",
+        comment="Столик у окна",
+        position=0,
+        selected_at=selected_at,
+    )
+    activity = ActivityOption.objects.create(
+        invitation=invitation,
+        title="Кино",
+        description="Премьера",
+        image_key="activity-movie",
+        place="Кинотеатр",
+        position=0,
+        selected_at=selected_at,
+    )
+    confirmed_at = datetime(2029, 12, 21, 10, 0, tzinfo=UTC)
+
+    with patch("apps.common.confirmation_views.now", return_value=confirmed_at):
+        response = APIClient().put(
+            confirmation_path(invitation.pk),
+            {
+                "confirmed": True,
+                "option_id": str(option.pk),
+                "activity_option_id": str(activity.pk),
+            },
+            format="json",
+            **authorization(token),
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    snapshot = response.json()["confirmed_plan"]
+    assert snapshot == {
+        "option_id": str(option.pk),
+        "activity_option_id": str(activity.pk),
+        "starts_at": starts_at.isoformat().replace("+00:00", "Z"),
+        "time_zone": "Europe/Moscow",
+        "place": "Кафе на набережной",
+        "comment": "Столик у окна",
+        "activity_title": "Кино",
+        "activity_description": "Премьера",
+        "activity_place": "Кинотеатр",
+        "activity_image_key": "activity-movie",
+        "final_title": "Наш план готов",
+        "final_subtitle": "До встречи совсем скоро",
+        "final_image_key": "final-night",
+        "final_text": (
+            "Борис, Алиса ждёт тебя 1 января 2030 в "
+            "18:00 (Europe/Moscow). Место: Кафе на набережной. Активность: Кино."
+        ),
+        "confirmed_at": confirmed_at.isoformat().replace("+00:00", "Z"),
+    }
+    assert ConfirmedPlan.objects.filter(invitation=invitation).count() == 1
+
+    invitation.author_name = "Изменённый автор"
+    invitation.recipient_name = "Изменённый получатель"
+    invitation.save(update_fields=("author_name", "recipient_name"))
+    option.starts_at = datetime(2031, 2, 2, 10, 0, tzinfo=UTC)
+    option.time_zone = "UTC"
+    option.place = "Другое место"
+    option.comment = "Другой комментарий"
+    option.save(update_fields=("starts_at", "time_zone", "place", "comment"))
+    activity.title = "Другая активность"
+    activity.description = "Другое описание"
+    activity.place = "Другое место активности"
+    activity.save(update_fields=("title", "description", "place"))
+    final_screen.title = "Другой заголовок"
+    final_screen.template_text = "Другой текст"
+    final_screen.save(update_fields=("title", "template_text"))
+
+    public_response = APIClient().get(f"/api/v1/invitations/{invitation.pk}/")
+    management_response = APIClient().get(
+        f"/api/v1/invitations/{invitation.pk}/manage/",
+        **authorization(token),
+    )
+
+    assert public_response.status_code == status.HTTP_200_OK
+    assert management_response.status_code == status.HTTP_200_OK
+    assert public_response.json()["confirmed_plan"] == snapshot
+    assert management_response.json()["confirmed_plan"] == snapshot
+
+
+def test_quick_confirmation_ignores_dormant_extended_final_screen() -> None:
+    """Quick invitations snapshot compact defaults, not leftover builder rows."""
+    invitation, token = create_invitation()
+    InvitationScreen.objects.create(
+        invitation=invitation,
+        screen_type=InvitationScreen.ScreenType.FINAL,
+        title="Не использовать",
+        subtitle="Остаток расширенного режима",
+        image_key="final-night",
+        template_text="Не использовать {recipient}",
+    )
+    option = create_options(invitation)[0]
+
+    response = confirm(invitation, token, option.pk)
+
+    assert response.status_code == status.HTTP_200_OK
+    snapshot = response.json()["confirmed_plan"]
+    assert snapshot["final_title"] == "Договорились 💞"
+    assert snapshot["final_image_key"] == "final-default"
+    assert "Не использовать" not in snapshot["final_text"]
+
+
+def test_exact_confirmation_retry_uses_snapshot_after_source_rows_change() -> None:
+    """An exact retry returns the frozen card without reading a new clock value."""
+    invitation, token = create_invitation()
+    option = create_options(invitation)[0]
+    first_response = confirm(invitation, token, option.pk)
+    assert first_response.status_code == status.HTTP_200_OK
+    first_snapshot = first_response.json()["confirmed_plan"]
+
+    option.place = "Повреждённое исходное место"
+    option.save(update_fields=("place",))
+    invitation.author_name = "Повреждённое имя"
+    invitation.save(update_fields=("author_name",))
+
+    with patch("apps.common.confirmation_views.now") as mocked_now:
+        retry = confirm(invitation, token, option.pk)
+
+    assert retry.status_code == status.HTTP_200_OK
+    mocked_now.assert_not_called()
+    assert retry.json()["confirmed_plan"] == first_snapshot
+    assert ConfirmedPlan.objects.filter(invitation=invitation).count() == 1
 
 
 def test_confirmation_accepts_null_activity_when_no_choices_exist() -> None:
@@ -838,6 +993,24 @@ def test_database_allows_confirmation_at_selection_boundary() -> None:
     assert option.confirmed_at == selected_at
 
 
+def test_database_rejects_snapshot_at_or_after_start() -> None:
+    """The immutable final snapshot must be created before the meeting begins."""
+    invitation, _ = create_invitation()
+    starts_at = django_now() + timedelta(days=2)
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        ConfirmedPlan.objects.create(
+            invitation=invitation,
+            option_id=uuid.uuid4(),
+            starts_at=starts_at,
+            time_zone="UTC",
+            place="Кафе",
+            final_title="Договорились",
+            final_text="До встречи",
+            confirmed_at=starts_at,
+        )
+
+
 def test_confirmation_throttle_rejects_excess_retries_without_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -996,6 +1169,13 @@ def test_openapi_documents_final_confirmation_contract() -> None:
     )
     invitation_properties = schema["components"]["schemas"]["Invitation"]["properties"]
     assert invitation_properties["confirmed_at"]["readOnly"] is True
+    confirmed_plan_reference = invitation_properties["confirmed_plan"]["allOf"][0]["$ref"]
+    confirmed_plan_schema = schema["components"]["schemas"][
+        confirmed_plan_reference.rsplit("/", maxsplit=1)[-1]
+    ]
+    assert confirmed_plan_schema["properties"]["time_zone"]["readOnly"] is True
+    assert confirmed_plan_schema["properties"]["final_text"]["readOnly"] is True
+    assert confirmed_plan_schema["properties"]["confirmed_at"]["readOnly"] is True
     assert invitation_properties["server_now"] == {
         "type": "string",
         "format": "date-time",

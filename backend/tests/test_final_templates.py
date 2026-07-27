@@ -2,6 +2,7 @@
 
 import importlib
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from django.apps import apps as django_apps
@@ -13,6 +14,7 @@ from apps.common.final_templates import (
     DEFAULT_FINAL_TEXT_TEMPLATE,
     FINAL_TEMPLATE_VARIABLES,
     FinalTemplateValidationError,
+    build_final_template_values,
     normalize_final_text_template,
     render_final_text_template,
 )
@@ -88,6 +90,53 @@ def test_safe_template_renders_only_exact_allowed_variables() -> None:
         "место — {place}, активность — {activity}.",
         values,
     ) == ("{План}: Борис, Алиса ждёт тебя 27 июля в 19:00, место — Кофейня, активность — Кино.")
+
+
+def test_final_template_values_use_the_saved_iana_time_zone() -> None:
+    """The shared final text renders one deterministic local date and explicit zone."""
+    values = build_final_template_values(
+        activity_title="Кино",
+        author_name="Алиса",
+        place="Кафе",
+        recipient_name="Борис",
+        starts_at=datetime(2030, 1, 1, 15, 0, tzinfo=UTC),
+        time_zone="Europe/Moscow",
+    )
+
+    assert values == {
+        "author": "Алиса",
+        "recipient": "Борис",
+        "date": "1 января 2030",
+        "time": "18:00 (Europe/Moscow)",
+        "place": "Кафе",
+        "activity": "Кино",
+    }
+
+
+def test_final_template_values_reject_unknown_time_zone() -> None:
+    """A typo cannot silently fall back to a different meeting time zone."""
+    with pytest.raises(FinalTemplateValidationError, match="часовой пояс"):
+        build_final_template_values(
+            activity_title="",
+            author_name="Алиса",
+            place="Кафе",
+            recipient_name="Борис",
+            starts_at=datetime(2030, 1, 1, 15, 0, tzinfo=UTC),
+            time_zone="Mars/Olympus",
+        )
+
+
+def test_final_template_values_reject_unsafe_time_zone_key() -> None:
+    """An absolute path is validation data, never an uncaught zoneinfo error."""
+    with pytest.raises(FinalTemplateValidationError, match="часовой пояс"):
+        build_final_template_values(
+            activity_title="",
+            author_name="Алиса",
+            place="Кафе",
+            recipient_name="Борис",
+            starts_at=datetime(2030, 1, 1, 15, 0, tzinfo=UTC),
+            time_zone="/etc/localtime",
+        )
 
 
 def test_render_requires_every_referenced_variable_value() -> None:

@@ -9,6 +9,7 @@ import {
   type PlanOptionsPayload,
 } from '../../types/invitation'
 import {
+  getClientTimeZone,
   getMinimumPlanDateTime,
   planDraftsToPayload,
   planOptionDraftsHaveChanges,
@@ -50,7 +51,7 @@ const optionErrors = ref<PlanOptionDraftErrors[]>([])
 const formError = ref('')
 const statusRef = ref<HTMLElement | null>(null)
 const minimumDateTime = computed(() => getMinimumPlanDateTime(props.currentTime))
-const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'часовой пояс устройства'
+const localTimeZone = getClientTimeZone()
 let nextKey = 0
 let persistedFingerprint = ''
 
@@ -143,6 +144,7 @@ function createRow(draft?: PlanOptionDraft): EditorRow {
 function fingerprintOptions(options: InvitationPlanOption[]): string {
   return JSON.stringify(sortPlanOptions(options).map(option => ({
     startsAt: option.starts_at,
+    timeZone: option.time_zone,
     place: option.place,
     comment: option.comment,
     position: option.position,
@@ -238,7 +240,7 @@ function preparePayload(): PlanOptionsPayload | null {
     return null
   }
 
-  const payload = planDraftsToPayload(drafts.value)
+  const payload = planDraftsToPayload(drafts.value, localTimeZone)
 
   if (!payload) {
     formError.value = 'Не удалось распознать дату и время. Проверь варианты.'

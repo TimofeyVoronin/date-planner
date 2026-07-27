@@ -12,8 +12,13 @@ from apps.common.authentication import (
     HasInvitationManagementToken,
     ManagementTokenAuthentication,
 )
+from apps.common.final_templates import (
+    build_final_template_values,
+    render_final_text_template,
+)
 from apps.common.mixins import NoStoreResponseMixin
-from apps.common.models import Invitation
+from apps.common.models import ConfirmedPlan, Invitation, InvitationScreen
+from apps.common.screens import DEFAULT_INVITATION_SCREEN_CONFIGS
 from apps.common.serializers import (
     InvitationConfirmationSerializer,
     InvitationSerializer,
@@ -55,7 +60,8 @@ class InvitationConfirmationView(NoStoreResponseMixin, generics.GenericAPIView):
                     "The invitation is not accepted, has no selection, or the selected "
                     "date/activity differs from the plan shown to the author, or the date "
                     "is no longer in the future (codes: activity_selection_required, "
-                    "selected_activity_changed, selected_option_expired)."
+                    "selected_option_changed, selected_activity_changed, "
+                    "selected_option_expired)."
                 )
             ),
             status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
@@ -64,13 +70,44 @@ class InvitationConfirmationView(NoStoreResponseMixin, generics.GenericAPIView):
         },
     )
     def put(self, request: Request, *args: object, **kwargs: object) -> Response:
-        """Set the final confirmation once and leave exact retries unchanged."""
+        """Create one immutable final snapshot and leave exact retries unchanged."""
         with transaction.atomic():
             invitation = self.get_object()
             input_serializer = self.get_serializer(data=request.data)
             input_serializer.is_valid(raise_exception=True)
             expected_option_id = input_serializer.validated_data["option_id"]
             expected_activity_option_id = input_serializer.validated_data.get("activity_option_id")
+
+            existing_snapshot = ConfirmedPlan.objects.filter(invitation=invitation).first()
+            if existing_snapshot is not None:
+                if existing_snapshot.option_id != expected_option_id:
+                    return Response(
+                        {
+                            "code": "selected_option_changed",
+                            "detail": (
+                                "The confirmed date differs from the plan in this retry. "
+                                "Refresh the immutable final plan."
+                            ),
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                if existing_snapshot.activity_option_id != expected_activity_option_id:
+                    return Response(
+                        {
+                            "code": "selected_activity_changed",
+                            "detail": (
+                                "The confirmed activity differs from the plan in this retry. "
+                                "Refresh the immutable final plan."
+                            ),
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+                output_data = InvitationSerializer(
+                    invitation,
+                    context=self.get_serializer_context(),
+                ).data
+                return Response(output_data, status=status.HTTP_200_OK)
 
             if invitation.response_status != Invitation.ResponseStatus.ACCEPTED:
                 return Response(
@@ -87,7 +124,10 @@ class InvitationConfirmationView(NoStoreResponseMixin, generics.GenericAPIView):
 
             if selected_option.pk != expected_option_id:
                 return Response(
-                    {"detail": "The selected planning option changed before confirmation."},
+                    {
+                        "code": "selected_option_changed",
+                        "detail": "The selected planning option changed before confirmation.",
+                    },
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -124,7 +164,8 @@ class InvitationConfirmationView(NoStoreResponseMixin, generics.GenericAPIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            if selected_option.confirmed_at is None:
+            confirmed_at = selected_option.confirmed_at
+            if confirmed_at is None:
                 confirmed_at = now()
                 if selected_option.starts_at <= confirmed_at:
                     return Response(
@@ -136,8 +177,70 @@ class InvitationConfirmationView(NoStoreResponseMixin, generics.GenericAPIView):
                     )
                 selected_option.confirmed_at = confirmed_at
                 selected_option.save(update_fields=("confirmed_at",))
-                invitation.save(update_fields=("updated_at",))
 
+            final_defaults = DEFAULT_INVITATION_SCREEN_CONFIGS[InvitationScreen.ScreenType.FINAL]
+            final_screen = None
+            if invitation.creation_mode == Invitation.CreationMode.EXTENDED:
+                final_screen = invitation.screens.filter(
+                    screen_type=InvitationScreen.ScreenType.FINAL
+                ).first()
+            final_title = (
+                final_screen.title if final_screen is not None else final_defaults["title"]
+            )
+            final_subtitle = (
+                final_screen.subtitle if final_screen is not None else final_defaults["subtitle"]
+            )
+            final_image_key = (
+                final_screen.image_key if final_screen is not None else final_defaults["image_key"]
+            )
+            final_template = (
+                final_screen.template_text
+                if final_screen is not None and final_screen.template_text
+                else final_defaults["template_text"]
+            )
+            activity_title = (
+                selected_activity_option.title if selected_activity_option is not None else ""
+            )
+            final_text = render_final_text_template(
+                final_template,
+                build_final_template_values(
+                    activity_title=activity_title,
+                    author_name=invitation.author_name,
+                    place=selected_option.place,
+                    recipient_name=invitation.recipient_name,
+                    starts_at=selected_option.starts_at,
+                    time_zone=selected_option.time_zone,
+                ),
+            )
+            ConfirmedPlan.objects.create(
+                invitation=invitation,
+                option_id=selected_option.pk,
+                activity_option_id=selected_activity_option_id,
+                starts_at=selected_option.starts_at,
+                time_zone=selected_option.time_zone,
+                place=selected_option.place,
+                comment=selected_option.comment,
+                activity_title=activity_title,
+                activity_description=(
+                    selected_activity_option.description
+                    if selected_activity_option is not None
+                    else ""
+                ),
+                activity_place=(
+                    selected_activity_option.place if selected_activity_option is not None else ""
+                ),
+                activity_image_key=(
+                    selected_activity_option.image_key
+                    if selected_activity_option is not None
+                    else ""
+                ),
+                final_title=final_title,
+                final_subtitle=final_subtitle,
+                final_image_key=final_image_key,
+                final_text=final_text,
+                confirmed_at=confirmed_at,
+            )
+            invitation.save(update_fields=("updated_at",))
             invitation._selected_plan_option_cache = selected_option
             invitation._selected_activity_option_cache = selected_activity_option
             output_data = InvitationSerializer(

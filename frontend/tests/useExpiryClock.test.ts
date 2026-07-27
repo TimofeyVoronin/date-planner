@@ -10,6 +10,7 @@ function option(startsAt: string): InvitationPlanOption {
   return {
     id: 'option',
     starts_at: startsAt,
+    time_zone: 'UTC',
     place: 'Кафе',
     comment: '',
     position: 1,

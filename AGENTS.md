@@ -23,8 +23,8 @@ These rules apply to the entire repository.
 - Keep activity options owned by one extended invitation and ordered by their submitted array position. The first management API replaces the complete collection atomically, accepts three–six draft options, keeps exact retries idempotent, and freezes edits after publication.
 - Keep recipient activity selection public only for accepted published extended invitations. Expose prepared activities only after acceptance, allow one mutable selection until final confirmation, preserve exact retries, reject foreign options, and require an activity before confirming when the invitation has activity choices.
 - Bind final confirmation to the exact date/activity combination shown to the author. Submit both expected UUIDs, lock the invitation while comparing them with the latest selections, reject stale activity snapshots, and render the same combined plan details before and after confirmation on both capabilities.
-- Keep final-screen templates allow-listed and non-executable. Only `{author}`, `{recipient}`, `{date}`, `{time}`, `{place}`, and `{activity}` may be substituted, and user values must remain plain text rather than being parsed again.
-- Treat the final screen as one autosaved draft resource: edit only its title, subtitle, compatible local image, and safe template; send minimal PATCH payloads, flush before leaving step four, and render the same persisted presentation on both confirmed-plan pages.
+- Store the IANA time-zone name with every planning option and format shared final data in that saved zone rather than whichever browser happens to render the page.
+- Treat `ConfirmedPlan` as an immutable display snapshot created exactly once inside the confirmation transaction. Public and management final cards must read that snapshot, not mutable invitation names, screen rows, or option rows; exact confirmation retries must return the original snapshot without changing timestamps.
 - Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 

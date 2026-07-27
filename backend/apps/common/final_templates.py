@@ -2,7 +2,9 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Final
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 FINAL_TEMPLATE_MAX_LENGTH: Final = 1000
 FINAL_TEMPLATE_VARIABLES: Final[tuple[str, ...]] = (
@@ -114,3 +116,60 @@ def render_final_text_template(
     return "".join(
         str(values[token.value]) if token.kind == "variable" else token.value for token in tokens
     )
+
+
+RUSSIAN_MONTH_NAMES: Final[tuple[str, ...]] = (
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
+)
+
+
+def normalize_time_zone(time_zone: str) -> str:
+    """Return a valid IANA time-zone name or raise a user-facing validation error."""
+    normalized = time_zone.strip()
+    if not normalized:
+        raise FinalTemplateValidationError("Укажи часовой пояс даты.")
+    try:
+        ZoneInfo(normalized)
+    except (ValueError, ZoneInfoNotFoundError) as error:
+        raise FinalTemplateValidationError("Неизвестный часовой пояс даты.") from error
+    return normalized
+
+
+def build_final_template_values(
+    *,
+    activity_title: str,
+    author_name: str,
+    place: str,
+    recipient_name: str,
+    starts_at: datetime,
+    time_zone: str,
+) -> dict[str, str]:
+    """Build deterministic final-template values in the author's saved time zone."""
+    normalized_time_zone = normalize_time_zone(time_zone)
+    local_starts_at = starts_at.astimezone(ZoneInfo(normalized_time_zone))
+    date_value = (
+        f"{local_starts_at.day} "
+        f"{RUSSIAN_MONTH_NAMES[local_starts_at.month - 1]} "
+        f"{local_starts_at.year}"
+    )
+    time_value = f"{local_starts_at:%H:%M} ({normalized_time_zone})"
+
+    return {
+        "author": author_name.strip() or "Автор приглашения",
+        "recipient": recipient_name.strip() or "Получатель приглашения",
+        "date": date_value,
+        "time": time_value,
+        "place": place.strip() or "в выбранном месте",
+        "activity": activity_title.strip() or "приятное свидание",
+    }

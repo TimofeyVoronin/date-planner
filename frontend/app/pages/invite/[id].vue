@@ -25,7 +25,6 @@ import {
 } from '../../../utils/invitations'
 import { getInvitationScreenByType } from '../../../utils/screens'
 import {
-  findSelectedPlanOption,
   findUsableSelectedPlanOption,
   getPersistedPlanSelectionState,
   parsePlanningApiError,
@@ -58,14 +57,6 @@ const announceFinalPlan = ref(false)
 const announceFinalPlanOnNextSnapshot = ref(false)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const { currentTime, refreshCurrentTime, synchronizeServerTime } = useExpiryClock()
-const selectedPlanOption = computed(() => findSelectedPlanOption(
-  invitation.value?.plan_options ?? [],
-  invitation.value?.selected_option_id ?? null,
-))
-const selectedActivityOption = computed(() => findSelectedActivityOption(
-  invitation.value?.activity_options ?? [],
-  invitation.value?.selected_activity_option_id ?? null,
-))
 const invitationScreen = computed(() => (
   getInvitationScreenByType(invitation.value?.screens ?? [], 'invitation')
 ))
@@ -77,9 +68,6 @@ const dateSelectionScreen = computed(() => (
 ))
 const activitySelectionScreen = computed(() => (
   getInvitationScreenByType(invitation.value?.screens ?? [], 'activity_selection')
-))
-const finalScreen = computed(() => (
-  getInvitationScreenByType(invitation.value?.screens ?? [], 'final')
 ))
 const planningSectionRef = ref<HTMLElement | null>(null)
 const activitySectionRef = ref<HTMLElement | null>(null)
@@ -502,14 +490,9 @@ onMounted(loadInvitation)
 
           <template v-if="invitation.confirmed_at">
             <FinalPlanCard
-              v-if="selectedPlanOption"
-              :activity="selectedActivityOption"
+              v-if="invitation.confirmed_plan"
               :announce="announceFinalPlan"
-              :author-name="invitation.author_name"
-              :confirmed-at="invitation.confirmed_at"
-              :option="selectedPlanOption"
-              :recipient-name="invitation.recipient_name"
-              :screen="finalScreen"
+              :plan="invitation.confirmed_plan"
             />
             <section v-else class="plan-data-error" role="alert">
               Итоговый план не удалось загрузить. Обнови страницу и попробуй снова.

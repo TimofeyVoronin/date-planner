@@ -59,6 +59,7 @@ const invitationRecord: InvitationRecord = {
   selected_activity_option_id: null,
   activity_selected_at: null,
   confirmed_at: null,
+  confirmed_plan: null,
   created_at: '2030-01-01T09:00:00Z',
   updated_at: '2030-01-01T09:00:00Z',
 }

@@ -18,7 +18,6 @@ import type {
 } from '../../../../types/invitation'
 import { findSelectedActivityOption } from '../../../../utils/activities'
 import { buildBuilderPath } from '../../../../utils/builder'
-import { getInvitationScreenByType } from '../../../../utils/screens'
 import {
   buildPublicInvitationUrl,
   getInvitationCreationModePresentation,
@@ -105,9 +104,6 @@ const activitySelectionRequired = computed(() => (
 const selectedPlanOption = computed(() => findSelectedPlanOption(
   invitation.value?.plan_options ?? [],
   invitation.value?.selected_option_id ?? null,
-))
-const finalScreen = computed(() => (
-  getInvitationScreenByType(invitation.value?.screens ?? [], 'final')
 ))
 const confirmationStage = computed(() => getPlanConfirmationStage(
   invitation.value?.response_status ?? 'pending',
@@ -672,14 +668,9 @@ onUnmounted(() => {
 
             <template v-if="confirmationStage === 'confirmed'">
               <FinalPlanCard
-                v-if="selectedPlanOption && invitation.confirmed_at"
-                :activity="selectedActivityOption"
+                v-if="invitation.confirmed_plan"
                 :announce="confirmationJustCompleted"
-                :author-name="invitation.author_name"
-                :confirmed-at="invitation.confirmed_at"
-                :option="selectedPlanOption"
-                :recipient-name="invitation.recipient_name"
-                :screen="finalScreen"
+                :plan="invitation.confirmed_plan"
               />
               <section v-else class="plan-data-error" role="alert">
                 Подтверждённый план не удалось загрузить. Обнови данные страницы.
@@ -778,7 +769,7 @@ onUnmounted(() => {
                   <h2 id="plan-recovery-title">Время выбранного варианта уже прошло</h2>
                   <p v-if="selectedPlanOption">
                     Получатель выбирал «{{ selectedPlanOption.place }}» —
-                    {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}.
+                    {{ formatPlanOptionDate(selectedPlanOption.starts_at, selectedPlanOption.time_zone) }}.
                   </p>
                   <p>{{ planRecoveryPresentation.description }}</p>
                 </div>
