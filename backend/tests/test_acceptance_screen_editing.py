@@ -23,6 +23,7 @@ SCREEN_RESPONSE_FIELDS = {
     "button_text",
     "secondary_button_text",
     "image_key",
+    "template_text",
 }
 
 
@@ -85,6 +86,7 @@ def test_author_can_update_acceptance_screen_fields() -> None:
         "button_text": "Продолжить",
         "secondary_button_text": "",
         "image_key": "acceptance-fireworks",
+        "template_text": "",
     }
 
 
@@ -171,6 +173,7 @@ def test_acceptance_update_rejects_invalid_values(field: str, value: str) -> Non
     "field",
     [
         "secondary_button_text",
+        "template_text",
         "screen_type",
         "invitation",
         "created_at",
@@ -325,6 +328,7 @@ def test_public_response_uses_customized_acceptance_screen_after_publication() -
         "button_text": "К вариантам",
         "secondary_button_text": "",
         "image_key": "acceptance-together",
+        "template_text": "",
     }
 
 

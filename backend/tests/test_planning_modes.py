@@ -376,6 +376,7 @@ def test_accepted_public_snapshot_combines_date_screen_and_ordered_options() -> 
         "button_text": "Продолжить",
         "secondary_button_text": "",
         "image_key": "date-selection-default",
+        "template_text": "",
     }
     assert [option["position"] for option in body["plan_options"]] == [0, 1]
     assert [option["place"] for option in body["plan_options"]] == ["Место 1", "Место 2"]

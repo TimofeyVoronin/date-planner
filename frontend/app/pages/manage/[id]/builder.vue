@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import ActivityOptionsEditor from '../../../../components/activities/ActivityOptionsEditor.vue'
 import BuilderAcceptanceScreenEditor from '../../../../components/builder/BuilderAcceptanceScreenEditor.vue'
+import BuilderFinalTemplateSummary from '../../../../components/builder/BuilderFinalTemplateSummary.vue'
 import BuilderImageLibrary from '../../../../components/builder/BuilderImageLibrary.vue'
 import BuilderInvitationScreenEditor from '../../../../components/builder/BuilderInvitationScreenEditor.vue'
 import BuilderInvitationStep from '../../../../components/builder/BuilderInvitationStep.vue'
@@ -19,7 +20,10 @@ import type {
   ActivityOptionRecord,
   ActivityOptionsPayload,
 } from '../../../../types/activity'
-import type { BuilderPreviewScreen } from '../../../../types/builder-preview'
+import type {
+  BuilderPreviewScreen,
+  BuilderPreviewScreenConfig,
+} from '../../../../types/builder-preview'
 import type {
   InvitationPlanOption,
   InvitationPlanningMode,
@@ -28,7 +32,6 @@ import type {
 } from '../../../../types/invitation'
 import type { InvitationImageKey } from '../../../../types/invitation-image'
 import type {
-  InvitationScreenEditForm,
   InvitationScreenRecord,
   InvitationScreenType,
 } from '../../../../types/screen'
@@ -114,6 +117,9 @@ const primaryInvitationScreen = computed(() => (
 ))
 const acceptanceInvitationScreen = computed(() => (
   getInvitationScreenByType(screens.value, 'acceptance')
+))
+const finalInvitationScreen = computed(() => (
+  getInvitationScreenByType(screens.value, 'final')
 ))
 const summaryScreens = computed(() => (
   currentStep.value === 1 ? [] : activeScreens.value
@@ -248,7 +254,7 @@ const selectedImageKeys = computed(() => ({
   acceptance: acceptanceScreenAutosave.form.image_key,
 }))
 
-const previewScreens = computed<Record<BuilderPreviewScreen, InvitationScreenEditForm> | null>(() => {
+const previewScreens = computed<Record<BuilderPreviewScreen, BuilderPreviewScreenConfig> | null>(() => {
   const dateScreen = getInvitationScreenByType(screens.value, 'date_selection')
   const activityScreen = getInvitationScreenByType(screens.value, 'activity_selection')
   const finalScreen = getInvitationScreenByType(screens.value, 'final')
@@ -264,6 +270,7 @@ const previewScreens = computed<Record<BuilderPreviewScreen, InvitationScreenEdi
       button_text: invitationScreenAutosave.form.button_text,
       secondary_button_text: invitationScreenAutosave.form.secondary_button_text,
       image_key: invitationScreenAutosave.form.image_key,
+      template_text: '',
     },
     acceptance: {
       title: acceptanceScreenAutosave.form.title,
@@ -271,10 +278,20 @@ const previewScreens = computed<Record<BuilderPreviewScreen, InvitationScreenEdi
       button_text: acceptanceScreenAutosave.form.button_text,
       secondary_button_text: '',
       image_key: acceptanceScreenAutosave.form.image_key,
+      template_text: '',
     },
-    date_selection: createInvitationScreenEditForm(dateScreen),
-    activity_selection: createInvitationScreenEditForm(activityScreen),
-    final: createInvitationScreenEditForm(finalScreen),
+    date_selection: {
+      ...createInvitationScreenEditForm(dateScreen),
+      template_text: dateScreen.template_text,
+    },
+    activity_selection: {
+      ...createInvitationScreenEditForm(activityScreen),
+      template_text: activityScreen.template_text,
+    },
+    final: {
+      ...createInvitationScreenEditForm(finalScreen),
+      template_text: finalScreen.template_text,
+    },
   }
 })
 const previewDateOptions = computed(() => (
@@ -1050,21 +1067,13 @@ onUnmounted(() => {
                 <BuilderScreenConfigSummary :screens="summaryScreens" />
               </template>
 
-              <section v-else class="builder-stage__placeholder" aria-label="Содержимое будущего шага">
-                <p>Каркас шага готов</p>
-                <h3>Что появится здесь в следующих задачах</h3>
+              <template v-else>
+                <BuilderFinalTemplateSummary
+                  v-if="finalInvitationScreen"
+                  :screen="finalInvitationScreen"
+                />
                 <BuilderScreenConfigSummary :screens="summaryScreens" />
-                <ul>
-                  <li v-for="feature in activeStep.plannedFeatures" :key="feature">
-                    <span aria-hidden="true">✓</span>
-                    {{ feature }}
-                  </li>
-                </ul>
-                <p class="builder-stage__notice">
-                  Конфигурация экрана уже хранится на сервере. Поля редактирования подключим
-                  отдельными проверяемыми итерациями.
-                </p>
-              </section>
+              </template>
 
               <BuilderImageLibrary
                 v-if="currentStep !== 3"

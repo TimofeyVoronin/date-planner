@@ -14,6 +14,7 @@ import type {
   PlanSelectionPayload,
 } from '../types/invitation'
 import type {
+  FinalTemplateUpdatePayload,
   InvitationScreenRecord,
   InvitationScreenUpdatePayload,
 } from '../types/screen'
@@ -93,6 +94,26 @@ export function useInvitationsApi() {
   ): Promise<InvitationScreenRecord> {
     const response = await $fetch<unknown>(
       `/api/v1/invitations/${encodeURIComponent(id)}/screens/${screenType}/`,
+      {
+        baseURL,
+        method: 'PATCH',
+        body: payload,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+
+    return normalizeInvitationScreen(response)
+  }
+
+  async function updateFinalTemplate(
+    id: string,
+    token: string,
+    payload: FinalTemplateUpdatePayload,
+  ): Promise<InvitationScreenRecord> {
+    const response = await $fetch<unknown>(
+      `/api/v1/invitations/${encodeURIComponent(id)}/screens/final/`,
       {
         baseURL,
         method: 'PATCH',
@@ -247,6 +268,7 @@ export function useInvitationsApi() {
     savePlanOptions,
     savePlanSelection,
     saveInvitationResponse,
+    updateFinalTemplate,
     updateInvitationScreen,
     updateManagedInvitation,
   }

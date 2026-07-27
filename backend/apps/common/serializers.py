@@ -9,6 +9,10 @@ from django.utils.timezone import is_naive, now
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.common.final_templates import (
+    FinalTemplateValidationError,
+    normalize_final_text_template,
+)
 from apps.common.models import (
     INVITATION_ANSWER_STATUS_CHOICES,
     ActivityOption,
@@ -41,6 +45,7 @@ class InvitationScreenSerializer(serializers.ModelSerializer):
             "button_text",
             "secondary_button_text",
             "image_key",
+            "template_text",
         )
         read_only_fields = fields
 
@@ -138,6 +143,32 @@ class InvitationPrimaryScreenUpdateSerializer(InvitationScreenUpdateSerializer):
                 "trim_whitespace": True,
             },
         }
+
+
+class InvitationFinalScreenUpdateSerializer(InvitationScreenUpdateSerializer):
+    """Validate the safe variable template used by the final screen."""
+
+    editable_fields = ("template_text",)
+
+    class Meta:
+        """Expose only the template until the full final-screen editor arrives."""
+
+        model = InvitationScreen
+        fields = ("template_text",)
+        extra_kwargs = {
+            "template_text": {
+                "min_length": 1,
+                "allow_blank": False,
+                "trim_whitespace": True,
+            },
+        }
+
+    def validate_template_text(self, template_text: str) -> str:
+        """Reject unknown variables, malformed braces, and advanced formatting syntax."""
+        try:
+            return normalize_final_text_template(template_text)
+        except FinalTemplateValidationError as error:
+            raise serializers.ValidationError(str(error)) from error
 
 
 class InvitationPlanOptionSerializer(serializers.ModelSerializer):

@@ -3,6 +3,7 @@
 from collections.abc import Iterable
 from typing import Final, TypedDict
 
+from apps.common.final_templates import DEFAULT_FINAL_TEXT_TEMPLATE
 from apps.common.models import Invitation, InvitationScreen
 
 
@@ -14,6 +15,7 @@ class InvitationScreenDefaults(TypedDict):
     button_text: str
     secondary_button_text: str
     image_key: str
+    template_text: str
 
 
 INVITATION_SCREEN_TYPE_ORDER: Final[tuple[str, ...]] = (
@@ -31,6 +33,7 @@ DEFAULT_INVITATION_SCREEN_CONFIGS: Final[dict[str, InvitationScreenDefaults]] = 
         "button_text": "Да! 😍",
         "secondary_button_text": "Нет",
         "image_key": "invitation-default",
+        "template_text": "",
     },
     InvitationScreen.ScreenType.ACCEPTANCE: {
         "title": "Ура! 💘",
@@ -38,6 +41,7 @@ DEFAULT_INVITATION_SCREEN_CONFIGS: Final[dict[str, InvitationScreenDefaults]] = 
         "button_text": "Выбрать дату",
         "secondary_button_text": "",
         "image_key": "acceptance-default",
+        "template_text": "",
     },
     InvitationScreen.ScreenType.DATE_SELECTION: {
         "title": "Когда тебе удобно?",
@@ -45,6 +49,7 @@ DEFAULT_INVITATION_SCREEN_CONFIGS: Final[dict[str, InvitationScreenDefaults]] = 
         "button_text": "Продолжить",
         "secondary_button_text": "",
         "image_key": "date-selection-default",
+        "template_text": "",
     },
     InvitationScreen.ScreenType.ACTIVITY_SELECTION: {
         "title": "Чем займёмся?",
@@ -52,6 +57,7 @@ DEFAULT_INVITATION_SCREEN_CONFIGS: Final[dict[str, InvitationScreenDefaults]] = 
         "button_text": "Продолжить",
         "secondary_button_text": "",
         "image_key": "activity-selection-default",
+        "template_text": "",
     },
     InvitationScreen.ScreenType.FINAL: {
         "title": "Договорились 💞",
@@ -59,6 +65,7 @@ DEFAULT_INVITATION_SCREEN_CONFIGS: Final[dict[str, InvitationScreenDefaults]] = 
         "button_text": "Посмотреть план",
         "secondary_button_text": "",
         "image_key": "final-default",
+        "template_text": DEFAULT_FINAL_TEXT_TEMPLATE,
     },
 }
 

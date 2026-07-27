@@ -205,6 +205,7 @@ class InvitationScreen(models.Model):
     button_text = models.CharField(max_length=80, blank=True, default="")
     secondary_button_text = models.CharField(max_length=80, blank=True, default="")
     image_key = models.CharField(max_length=80, blank=True, default="")
+    template_text = models.TextField(max_length=1000, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -227,6 +228,10 @@ class InvitationScreen(models.Model):
                     )
                 ),
                 name="invitation_screen_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(screen_type="final") | models.Q(template_text=""),
+                name="nonfinal_invitation_screen_template_empty",
             ),
         ]
 

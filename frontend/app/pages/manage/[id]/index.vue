@@ -18,6 +18,7 @@ import type {
 } from '../../../../types/invitation'
 import { findSelectedActivityOption } from '../../../../utils/activities'
 import { buildBuilderPath } from '../../../../utils/builder'
+import { getInvitationScreenByType } from '../../../../utils/screens'
 import {
   buildPublicInvitationUrl,
   getInvitationCreationModePresentation,
@@ -104,6 +105,9 @@ const activitySelectionRequired = computed(() => (
 const selectedPlanOption = computed(() => findSelectedPlanOption(
   invitation.value?.plan_options ?? [],
   invitation.value?.selected_option_id ?? null,
+))
+const finalScreen = computed(() => (
+  getInvitationScreenByType(invitation.value?.screens ?? [], 'final')
 ))
 const confirmationStage = computed(() => getPlanConfirmationStage(
   invitation.value?.response_status ?? 'pending',
@@ -671,8 +675,11 @@ onUnmounted(() => {
                 v-if="selectedPlanOption && invitation.confirmed_at"
                 :activity="selectedActivityOption"
                 :announce="confirmationJustCompleted"
+                :author-name="invitation.author_name"
                 :confirmed-at="invitation.confirmed_at"
                 :option="selectedPlanOption"
+                :recipient-name="invitation.recipient_name"
+                :template-text="finalScreen?.template_text"
               />
               <section v-else class="plan-data-error" role="alert">
                 Подтверждённый план не удалось загрузить. Обнови данные страницы.

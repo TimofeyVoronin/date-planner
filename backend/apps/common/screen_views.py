@@ -15,6 +15,7 @@ from apps.common.mixins import NoStoreResponseMixin
 from apps.common.models import Invitation, InvitationScreen
 from apps.common.screens import order_invitation_screens
 from apps.common.serializers import (
+    InvitationFinalScreenUpdateSerializer,
     InvitationPrimaryScreenUpdateSerializer,
     InvitationScreenSerializer,
     InvitationScreenUpdateSerializer,
@@ -146,3 +147,10 @@ class InvitationAcceptanceScreenUpdateView(InvitationScreenUpdateView):
 
     serializer_class = InvitationScreenUpdateSerializer
     screen_type = InvitationScreen.ScreenType.ACCEPTANCE
+
+
+class InvitationFinalScreenUpdateView(InvitationScreenUpdateView):
+    """Update only the safe final-message template of an extended draft."""
+
+    serializer_class = InvitationFinalScreenUpdateSerializer
+    screen_type = InvitationScreen.ScreenType.FINAL

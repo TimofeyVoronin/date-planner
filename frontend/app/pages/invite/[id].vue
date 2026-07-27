@@ -78,6 +78,9 @@ const dateSelectionScreen = computed(() => (
 const activitySelectionScreen = computed(() => (
   getInvitationScreenByType(invitation.value?.screens ?? [], 'activity_selection')
 ))
+const finalScreen = computed(() => (
+  getInvitationScreenByType(invitation.value?.screens ?? [], 'final')
+))
 const planningSectionRef = ref<HTMLElement | null>(null)
 const activitySectionRef = ref<HTMLElement | null>(null)
 
@@ -502,8 +505,11 @@ onMounted(loadInvitation)
               v-if="selectedPlanOption"
               :activity="selectedActivityOption"
               :announce="announceFinalPlan"
+              :author-name="invitation.author_name"
               :confirmed-at="invitation.confirmed_at"
               :option="selectedPlanOption"
+              :recipient-name="invitation.recipient_name"
+              :template-text="finalScreen?.template_text"
             />
             <section v-else class="plan-data-error" role="alert">
               Итоговый план не удалось загрузить. Обнови страницу и попробуй снова.
