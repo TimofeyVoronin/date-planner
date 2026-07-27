@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, useId, watch } from 'vue'
+import type { ActivityOptionRecord } from '../../types/activity'
 import type { InvitationPlanOption } from '../../types/invitation'
 import { formatPlanOptionDate } from '../../utils/planning'
+import PlanSummaryDetails from './PlanSummaryDetails.vue'
 
 type Props = {
+  activity?: ActivityOptionRecord | null
   announce?: boolean
   confirmedAt: string
   option: InvitationPlanOption
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  activity: null,
   announce: false,
 })
 const titleId = useId()
@@ -53,31 +57,10 @@ watch(
     >
       Свидание подтверждено!
     </h2>
-    <div class="final-plan-card__details">
-      <div>
-        <span aria-hidden="true">🗓️</span>
-        <div>
-          <small>Дата и время</small>
-          <time :datetime="props.option.starts_at">
-            {{ formatPlanOptionDate(props.option.starts_at) }}
-          </time>
-        </div>
-      </div>
-      <div>
-        <span aria-hidden="true">📍</span>
-        <div>
-          <small>Место</small>
-          <strong>{{ props.option.place }}</strong>
-        </div>
-      </div>
-      <div v-if="props.option.comment" class="final-plan-card__comment">
-        <span aria-hidden="true">💬</span>
-        <div>
-          <small>Комментарий</small>
-          <span>{{ props.option.comment }}</span>
-        </div>
-      </div>
-    </div>
+    <PlanSummaryDetails
+      :activity="props.activity"
+      :option="props.option"
+    />
     <p class="final-plan-card__footer">
       <span aria-hidden="true">✓</span>
       Зафиксировано {{ formatPlanOptionDate(props.confirmedAt) }}

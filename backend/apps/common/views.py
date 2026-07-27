@@ -292,10 +292,15 @@ class InvitationResponseView(NoStoreResponseMixin, generics.GenericAPIView):
                 response_status == Invitation.ResponseStatus.DECLINED
                 and invitation.plan_options.filter(selected_at__isnull=False).exists()
             )
+            clear_activity_selection = (
+                response_status == Invitation.ResponseStatus.DECLINED
+                and invitation.activity_options.filter(selected_at__isnull=False).exists()
+            )
             if (
                 invitation.response_status != response_status
                 or invitation.responded_at is None
                 or clear_selection
+                or clear_activity_selection
             ):
                 invitation.response_status = response_status
                 invitation.responded_at = now()
@@ -304,6 +309,11 @@ class InvitationResponseView(NoStoreResponseMixin, generics.GenericAPIView):
                     invitation.plan_options.filter(selected_at__isnull=False).update(
                         selected_at=None
                     )
+                if clear_activity_selection:
+                    invitation.activity_options.filter(selected_at__isnull=False).update(
+                        selected_at=None
+                    )
+                    invitation._selected_activity_option_cache = None
                 invitation.save(update_fields=update_fields)
 
             output_data = InvitationSerializer(

@@ -2,6 +2,10 @@
 
 from django.urls import path
 
+from apps.common.activity_views import (
+    InvitationActivityOptionsView,
+    InvitationActivitySelectionView,
+)
 from apps.common.confirmation_views import InvitationConfirmationView
 from apps.common.planning_views import InvitationPlanOptionsView, InvitationSelectionView
 from apps.common.publication_views import InvitationPublicationView
@@ -62,6 +66,16 @@ urlpatterns = [
         "invitations/<uuid:pk>/plan-options/",
         InvitationPlanOptionsView.as_view(),
         name="invitation-plan-options",
+    ),
+    path(
+        "invitations/<uuid:pk>/activity-options/",
+        InvitationActivityOptionsView.as_view(),
+        name="invitation-activity-options",
+    ),
+    path(
+        "invitations/<uuid:pk>/activity-selection/",
+        InvitationActivitySelectionView.as_view(),
+        name="invitation-activity-selection",
     ),
     path(
         "invitations/<uuid:pk>/selection/",

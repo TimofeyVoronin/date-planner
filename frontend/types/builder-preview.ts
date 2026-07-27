@@ -1,3 +1,5 @@
+import type { InvitationImageKey } from './invitation-image'
+
 import type { BuilderStepNumber } from '../utils/builder'
 
 export const BUILDER_PREVIEW_SCREENS = [
@@ -29,6 +31,7 @@ export type BuilderPreviewDevice = {
 export type BuilderPreviewDemoOption = {
   description: string
   id: string
+  imageKey?: InvitationImageKey
   label: string
 }
 

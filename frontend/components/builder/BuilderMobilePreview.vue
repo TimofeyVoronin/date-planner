@@ -5,6 +5,7 @@ import type {
   BuilderPreviewDemoOption,
   BuilderPreviewScreen,
 } from '../../types/builder-preview'
+import type { InvitationImageKey } from '../../types/invitation-image'
 import type { InvitationScreenEditForm } from '../../types/screen'
 import type { BuilderStepNumber } from '../../utils/builder'
 import {
@@ -21,6 +22,7 @@ import {
 } from '../../utils/invitationImages'
 
 const props = defineProps<{
+  activityOptions: BuilderPreviewDemoOption[]
   authorName: string
   builderStep: BuilderStepNumber
   dateOptions: BuilderPreviewDemoOption[]
@@ -39,11 +41,19 @@ const activeScreenConfig = computed(() => props.screens[preview.activeScreen.val
 const visibleDateOptions = computed(() => (
   props.dateOptions.length > 0 ? props.dateOptions : BUILDER_PREVIEW_DATES
 ))
+const visibleActivityOptions = computed(() => (
+  props.activityOptions.length > 0 ? props.activityOptions : BUILDER_PREVIEW_ACTIVITIES
+))
 const selectedDate = computed(() => (
   visibleDateOptions.value.find(option => option.id === preview.selectedDateId.value)
   ?? visibleDateOptions.value[0]!
 ))
+const selectedActivity = computed(() => (
+  visibleActivityOptions.value.find(option => option.id === preview.selectedActivityId.value)
+  ?? visibleActivityOptions.value[0]!
+))
 const usesDraftDateOptions = computed(() => props.dateOptions.length > 0)
+const usesDraftActivityOptions = computed(() => props.activityOptions.length > 0)
 const activeImage = computed(() => (
   getInvitationImageByKey(activeScreenConfig.value.image_key)
 ))
@@ -75,6 +85,28 @@ watch(
   { immediate: true },
 )
 
+watch(
+  visibleActivityOptions,
+  (options: readonly BuilderPreviewDemoOption[]) => {
+    if (!options.some(option => option.id === preview.selectedActivityId.value)) {
+      preview.selectedActivityId.value = options[0]!.id
+    }
+  },
+  { immediate: true },
+)
+
+function getOptionImageUrl(imageKey: InvitationImageKey | undefined): string | null {
+  const image = imageKey ? getInvitationImageByKey(imageKey) : undefined
+
+  return image
+    ? resolveInvitationImageUrl(image.assetPath, config.app.baseURL)
+    : null
+}
+
+function getOptionImageAlt(imageKey: InvitationImageKey | undefined): string {
+  return imageKey ? getInvitationImageByKey(imageKey)?.altText ?? '' : ''
+}
+
 function selectScreen(screen: BuilderPreviewScreen): void {
   preview.selectScreen(screen)
 }
@@ -105,8 +137,8 @@ function handleNoClick(event: MouseEvent): void {
         <p>Интерактивный предпросмотр</p>
         <h3 id="builder-mobile-preview-title">Пройди приглашение как получатель</h3>
         <span>
-          Варианты даты из конструктора обновляются сразу; демонстрационная активность
-          не сохраняется на сервере.
+          Варианты даты и активности из конструктора обновляются сразу. Демонстрационные
+          значения используются только там, где реальные варианты ещё не заполнены.
         </span>
       </div>
       <button type="button" class="builder-mobile-preview__reset" @click="preview.reset">
@@ -271,24 +303,36 @@ function handleNoClick(event: MouseEvent): void {
             v-else-if="preview.activeScreen.value === 'activity_selection'"
             class="builder-mobile-preview__content"
           >
-            <p class="builder-mobile-preview__eyebrow">Демонстрационные идеи</p>
+            <p class="builder-mobile-preview__eyebrow">
+              {{ usesDraftActivityOptions ? 'Твои варианты' : 'Демонстрационные идеи' }}
+            </p>
             <h4>{{ activeScreenConfig.title || 'Чем займёмся?' }}</h4>
             <p v-if="activeScreenConfig.subtitle" class="builder-mobile-preview__subtitle">
               {{ activeScreenConfig.subtitle }}
             </p>
             <div class="builder-mobile-preview__options" aria-label="Пример вариантов активности">
               <button
-                v-for="option in BUILDER_PREVIEW_ACTIVITIES"
+                v-for="option in visibleActivityOptions"
                 :key="option.id"
                 type="button"
                 :aria-pressed="preview.selectedActivityId.value === option.id"
                 :class="{
                   'builder-mobile-preview__option--selected': preview.selectedActivityId.value === option.id,
+                  'builder-mobile-preview__option--with-image': Boolean(option.imageKey),
                 }"
                 @click="preview.selectedActivityId.value = option.id"
               >
-                <strong>{{ option.label }}</strong>
-                <span>{{ option.description }}</span>
+                <img
+                  v-if="getOptionImageUrl(option.imageKey)"
+                  :src="getOptionImageUrl(option.imageKey) ?? ''"
+                  :alt="getOptionImageAlt(option.imageKey)"
+                  width="96"
+                  height="64"
+                >
+                <span class="builder-mobile-preview__option-copy">
+                  <strong>{{ option.label }}</strong>
+                  <span>{{ option.description }}</span>
+                </span>
               </button>
             </div>
             <button
@@ -320,7 +364,7 @@ function handleNoClick(event: MouseEvent): void {
               </div>
               <div>
                 <dt>План</dt>
-                <dd>{{ preview.selectedActivity.value.label }}</dd>
+                <dd>{{ selectedActivity.label }}</dd>
               </div>
             </dl>
             <button

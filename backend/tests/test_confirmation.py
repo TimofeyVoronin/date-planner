@@ -154,6 +154,27 @@ def test_author_confirms_selected_future_option_once() -> None:
     assert invitation.updated_at > invitation_updated_at
 
 
+def test_confirmation_accepts_null_activity_when_no_choices_exist() -> None:
+    """A plan without activity choices confirms with an explicit null activity UUID."""
+    invitation, token = create_invitation()
+    option = create_options(invitation)[0]
+
+    response = APIClient().put(
+        confirmation_path(invitation.pk),
+        {
+            "confirmed": True,
+            "option_id": str(option.pk),
+            "activity_option_id": None,
+        },
+        format="json",
+        **authorization(token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    option.refresh_from_db()
+    assert option.confirmed_at is not None
+
+
 def test_exact_confirmation_retry_preserves_both_timestamps() -> None:
     """A repeated confirmation is a no-op and does not even ask for a new clock value."""
     invitation, token = create_invitation()
@@ -954,12 +975,25 @@ def test_openapi_documents_final_confirmation_contract() -> None:
     confirmation_schema = schema["components"]["schemas"]["InvitationConfirmation"]
     confirmation_properties = confirmation_schema["properties"]
     assert set(confirmation_schema["required"]) == {"confirmed", "option_id"}
+    assert set(confirmation_properties) == {
+        "confirmed",
+        "option_id",
+        "activity_option_id",
+    }
     confirmed_reference = confirmation_properties["confirmed"]["allOf"][0]["$ref"]
     confirmed_schema_name = confirmed_reference.rsplit("/", maxsplit=1)[-1]
     confirmed_schema = schema["components"]["schemas"][confirmed_schema_name]
     assert confirmed_schema == {"type": "boolean", "enum": [True]}
     assert confirmation_properties["option_id"]["type"] == "string"
     assert confirmation_properties["option_id"]["format"] == "uuid"
+    activity_option_schema = confirmation_properties["activity_option_id"]
+    assert activity_option_schema["type"] == "string"
+    assert activity_option_schema["format"] == "uuid"
+    assert activity_option_schema.get("nullable") is True or any(
+        variant.get("type") == "null"
+        for keyword in ("oneOf", "anyOf")
+        for variant in activity_option_schema.get(keyword, [])
+    )
     invitation_properties = schema["components"]["schemas"]["Invitation"]["properties"]
     assert invitation_properties["confirmed_at"]["readOnly"] is True
     assert invitation_properties["server_now"] == {

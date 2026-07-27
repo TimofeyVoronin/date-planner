@@ -52,9 +52,10 @@ class InvitationConfirmationView(NoStoreResponseMixin, generics.GenericAPIView):
             status.HTTP_404_NOT_FOUND: OpenApiResponse(description="Invitation not found."),
             status.HTTP_409_CONFLICT: OpenApiResponse(
                 description=(
-                    "The invitation is not accepted, has no selection, or its selected "
-                    "option differs from option_id or is no longer in the future "
-                    "(code: selected_option_expired)."
+                    "The invitation is not accepted, has no selection, or the selected "
+                    "date/activity differs from the plan shown to the author, or the date "
+                    "is no longer in the future (codes: activity_selection_required, "
+                    "selected_activity_changed, selected_option_expired)."
                 )
             ),
             status.HTTP_429_TOO_MANY_REQUESTS: OpenApiResponse(
@@ -69,6 +70,7 @@ class InvitationConfirmationView(NoStoreResponseMixin, generics.GenericAPIView):
             input_serializer = self.get_serializer(data=request.data)
             input_serializer.is_valid(raise_exception=True)
             expected_option_id = input_serializer.validated_data["option_id"]
+            expected_activity_option_id = input_serializer.validated_data.get("activity_option_id")
 
             if invitation.response_status != Invitation.ResponseStatus.ACCEPTED:
                 return Response(
@@ -89,6 +91,39 @@ class InvitationConfirmationView(NoStoreResponseMixin, generics.GenericAPIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
+            has_activity_options = (
+                invitation.creation_mode == Invitation.CreationMode.EXTENDED
+                and invitation.activity_options.exists()
+            )
+            selected_activity_option = None
+            if has_activity_options:
+                selected_activity_option = invitation.activity_options.filter(
+                    selected_at__isnull=False
+                ).first()
+                if selected_activity_option is None:
+                    return Response(
+                        {
+                            "code": "activity_selection_required",
+                            "detail": "Confirmation requires a selected activity option.",
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+            selected_activity_option_id = (
+                selected_activity_option.pk if selected_activity_option is not None else None
+            )
+            if expected_activity_option_id != selected_activity_option_id:
+                return Response(
+                    {
+                        "code": "selected_activity_changed",
+                        "detail": (
+                            "The selected activity changed before confirmation. Refresh the "
+                            "plan and confirm the current combination."
+                        ),
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
             if selected_option.confirmed_at is None:
                 confirmed_at = now()
                 if selected_option.starts_at <= confirmed_at:
@@ -104,6 +139,7 @@ class InvitationConfirmationView(NoStoreResponseMixin, generics.GenericAPIView):
                 invitation.save(update_fields=("updated_at",))
 
             invitation._selected_plan_option_cache = selected_option
+            invitation._selected_activity_option_cache = selected_activity_option
             output_data = InvitationSerializer(
                 invitation,
                 context=self.get_serializer_context(),
