@@ -238,20 +238,77 @@ def test_final_template_patch_is_normalized_minimal_and_idempotent() -> None:
     assert screen.updated_at == first_updated_at
 
 
-def test_final_template_endpoint_rejects_other_screen_fields() -> None:
-    """DPL-501 exposes only the template before the full DPL-502 editor."""
+def test_final_screen_patch_updates_presentation_and_template_together() -> None:
+    """The DPL-502 endpoint persists one minimal final-screen presentation resource."""
     client = APIClient()
     invitation, token = create_invitation(client)
+    screen = invitation.screens.get(screen_type=InvitationScreen.ScreenType.FINAL)
+    payload = {
+        "title": "До скорой встречи 💞",
+        "subtitle": "Ваш общий план уже подтверждён.",
+        "image_key": "final-night",
+        "template_text": "{recipient}, {author} ждёт тебя {date} в {time}: {activity} — {place}.",
+    }
 
-    response = client.patch(
+    first_response = client.patch(
         update_url(invitation),
-        {"title": "Новый финал", "image_key": "final-night"},
+        payload,
         format="json",
         **authorization(token),
     )
 
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert set(response.json()) == {"image_key", "title"}
+    assert first_response.status_code == status.HTTP_200_OK
+    assert first_response.json() == {
+        "screen_type": InvitationScreen.ScreenType.FINAL,
+        "button_text": screen.button_text,
+        "secondary_button_text": "",
+        **payload,
+    }
+    screen.refresh_from_db()
+    first_updated_at = screen.updated_at
+
+    second_response = client.patch(
+        update_url(invitation),
+        payload,
+        format="json",
+        **authorization(token),
+    )
+
+    assert second_response.status_code == status.HTTP_200_OK
+    screen.refresh_from_db()
+    assert screen.updated_at == first_updated_at
+
+
+def test_final_screen_endpoint_rejects_noneditable_or_incompatible_fields() -> None:
+    """Lifecycle fields, actions, and images from another screen remain server-controlled."""
+    client = APIClient()
+    invitation, token = create_invitation(client)
+
+    unsupported_response = client.patch(
+        update_url(invitation),
+        {
+            "button_text": "Ещё раз",
+            "secondary_button_text": "Нет",
+            "screen_type": "invitation",
+        },
+        format="json",
+        **authorization(token),
+    )
+    image_response = client.patch(
+        update_url(invitation),
+        {"image_key": "invitation-moon"},
+        format="json",
+        **authorization(token),
+    )
+
+    assert unsupported_response.status_code == status.HTTP_400_BAD_REQUEST
+    assert set(unsupported_response.json()) == {
+        "button_text",
+        "screen_type",
+        "secondary_button_text",
+    }
+    assert image_response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "image_key" in image_response.json()
 
 
 def test_final_template_requires_capability_and_unpublished_extended_invitation() -> None:
@@ -300,15 +357,20 @@ def test_final_template_requires_capability_and_unpublished_extended_invitation(
     assert published_response.status_code == status.HTTP_409_CONFLICT
 
 
-def test_public_snapshot_exposes_saved_final_template_after_publication() -> None:
-    """The recipient receives only the validated final template saved before publication."""
+def test_public_snapshot_exposes_saved_final_screen_after_publication() -> None:
+    """The recipient receives the validated DPL-502 presentation saved before publication."""
     client = APIClient()
     invitation, token = create_invitation(client)
-    template = "{recipient}, встречаемся {date} в {time}: {activity}, место — {place}."
+    payload = {
+        "title": "До встречи 💞",
+        "subtitle": "Ваш план подтверждён.",
+        "image_key": "final-route",
+        "template_text": "{recipient}, встречаемся {date} в {time}: {activity}, место — {place}.",
+    }
 
     update_response = client.patch(
         update_url(invitation),
-        {"template_text": template},
+        payload,
         format="json",
         **authorization(token),
     )
@@ -326,7 +388,12 @@ def test_public_snapshot_exposes_saved_final_template_after_publication() -> Non
         for screen in public_response.json()["screens"]
         if screen["screen_type"] == InvitationScreen.ScreenType.FINAL
     )
-    assert final_screen["template_text"] == template
+    assert final_screen == {
+        "screen_type": InvitationScreen.ScreenType.FINAL,
+        "button_text": "Посмотреть план",
+        "secondary_button_text": "",
+        **payload,
+    }
 
 
 def test_final_template_endpoint_returns_404_for_unknown_invitation() -> None:
@@ -344,8 +411,8 @@ def test_final_template_endpoint_returns_404_for_unknown_invitation() -> None:
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-def test_openapi_documents_final_template_patch_contract() -> None:
-    """The schema exposes one safe template field and the normal capability outcomes."""
+def test_openapi_documents_final_screen_editor_contract() -> None:
+    """The schema exposes the safe DPL-502 presentation fields and capability outcomes."""
     response = APIClient().get("/api/schema/?format=json")
 
     assert response.status_code == status.HTTP_200_OK
@@ -360,7 +427,10 @@ def test_openapi_documents_final_template_patch_contract() -> None:
 
     assert operation["security"] == [{"managementToken": []}]
     assert set(schema["components"]["schemas"][request_component]["properties"]) == {
-        "template_text"
+        "image_key",
+        "subtitle",
+        "template_text",
+        "title",
     }
     assert set(schema["components"]["schemas"][response_component]["properties"]) == (
         SCREEN_RESPONSE_FIELDS

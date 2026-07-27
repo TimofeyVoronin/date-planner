@@ -679,7 +679,7 @@ onUnmounted(() => {
                 :confirmed-at="invitation.confirmed_at"
                 :option="selectedPlanOption"
                 :recipient-name="invitation.recipient_name"
-                :template-text="finalScreen?.template_text"
+                :screen="finalScreen"
               />
               <section v-else class="plan-data-error" role="alert">
                 Подтверждённый план не удалось загрузить. Обнови данные страницы.

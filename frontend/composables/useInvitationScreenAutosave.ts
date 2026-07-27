@@ -58,6 +58,7 @@ export function useInvitationScreenAutosave(
     button_text: '',
     secondary_button_text: '',
     image_key: 'invitation-default',
+    template_text: '',
   })
   const status = ref<BuilderAutosaveStatus>('idle')
   const errorMessage = ref('')
