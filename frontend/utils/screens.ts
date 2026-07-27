@@ -11,6 +11,7 @@ import {
   type InvitationScreenValidationErrors,
 } from '../types/screen'
 import type { BuilderStepNumber } from './builder'
+import { normalizeFinalTextTemplate } from './finalTemplates'
 import { isInvitationImageCompatible, isInvitationImageKey } from './invitationImages'
 
 export type InvitationScreenPresentation = {
@@ -157,6 +158,19 @@ export function normalizeInvitationScreen(payload: unknown): InvitationScreenRec
     throw new Error('Изображение не подходит для указанного экрана приглашения.')
   }
 
+  const templateText = readStringField(payload, 'template_text')
+  if (payload.screen_type === 'final') {
+    try {
+      normalizeFinalTextTemplate(templateText)
+    }
+    catch {
+      throw new Error('Сервер вернул небезопасный шаблон финального экрана.')
+    }
+  }
+  else if (templateText) {
+    throw new Error('Шаблон финального текста не должен принадлежать другому экрану.')
+  }
+
   return {
     screen_type: payload.screen_type,
     title: readStringField(payload, 'title'),
@@ -164,6 +178,7 @@ export function normalizeInvitationScreen(payload: unknown): InvitationScreenRec
     button_text: readStringField(payload, 'button_text'),
     secondary_button_text: readStringField(payload, 'secondary_button_text'),
     image_key: imageKey,
+    template_text: templateText,
   }
 }
 

@@ -1,23 +1,42 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, useId, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import type { ActivityOptionRecord } from '../../types/activity'
 import type { InvitationPlanOption } from '../../types/invitation'
+import {
+  DEFAULT_FINAL_TEXT_TEMPLATE,
+  buildFinalTemplateContext,
+  renderFinalTextTemplateSafely,
+} from '../../utils/finalTemplates'
 import { formatPlanOptionDate } from '../../utils/planning'
 import PlanSummaryDetails from './PlanSummaryDetails.vue'
 
 type Props = {
   activity?: ActivityOptionRecord | null
   announce?: boolean
+  authorName: string
   confirmedAt: string
   option: InvitationPlanOption
+  recipientName: string
+  templateText?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   activity: null,
   announce: false,
+  templateText: DEFAULT_FINAL_TEXT_TEMPLATE,
 })
 const titleId = useId()
 const titleRef = ref<HTMLElement | null>(null)
+const renderedText = computed(() => renderFinalTextTemplateSafely(
+  props.templateText,
+  buildFinalTemplateContext({
+    activityTitle: props.activity?.title,
+    authorName: props.authorName,
+    place: props.option.place,
+    recipientName: props.recipientName,
+    startsAt: props.option.starts_at,
+  }),
+))
 
 function focusTitle(): void {
   void nextTick(() => titleRef.value?.focus())
@@ -57,6 +76,7 @@ watch(
     >
       Свидание подтверждено!
     </h2>
+    <p class="final-plan-card__message">{{ renderedText }}</p>
     <PlanSummaryDetails
       :activity="props.activity"
       :option="props.option"

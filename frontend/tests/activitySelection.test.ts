@@ -60,6 +60,7 @@ describe('recipient activity selection helpers', () => {
       button_text: 'Хочу это',
       secondary_button_text: '',
       image_key: 'activity-movie',
+      template_text: '',
     })).toEqual({
       buttonText: 'Хочу это',
       imageKey: 'activity-movie',

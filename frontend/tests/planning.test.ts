@@ -53,6 +53,7 @@ const dateSelectionScreen: InvitationScreenRecord = {
   button_text: 'Подтвердить дату',
   secondary_button_text: '',
   image_key: 'date-sunset',
+  template_text: '',
 }
 
 describe('planning date conversion', () => {

@@ -22,6 +22,7 @@ const screens: InvitationScreenRecord[] = [
     button_text: 'Да!',
     secondary_button_text: 'Нет',
     image_key: 'invitation-default',
+    template_text: '',
   },
   {
     screen_type: 'acceptance',
@@ -30,6 +31,7 @@ const screens: InvitationScreenRecord[] = [
     button_text: 'Выбрать дату',
     secondary_button_text: '',
     image_key: 'acceptance-default',
+    template_text: '',
   },
   {
     screen_type: 'date_selection',
@@ -38,6 +40,7 @@ const screens: InvitationScreenRecord[] = [
     button_text: 'Продолжить',
     secondary_button_text: '',
     image_key: 'date-selection-default',
+    template_text: '',
   },
   {
     screen_type: 'activity_selection',
@@ -46,6 +49,7 @@ const screens: InvitationScreenRecord[] = [
     button_text: 'Продолжить',
     secondary_button_text: '',
     image_key: 'activity-selection-default',
+    template_text: '',
   },
   {
     screen_type: 'final',
@@ -54,6 +58,7 @@ const screens: InvitationScreenRecord[] = [
     button_text: 'Посмотреть план',
     secondary_button_text: '',
     image_key: 'final-default',
+    template_text: '{recipient}, жду тебя {date} в {time}. Встречаемся в {place}, а дальше нас ждёт {activity} 💘',
   },
 ]
 
@@ -83,6 +88,18 @@ describe('invitation screen configuration', () => {
       ...screens.slice(0, 4),
       { ...screens[4], title: null },
     ])).toThrow(/title/i)
+  })
+
+  it('rejects unsafe or misplaced final templates', () => {
+    expect(() => normalizeInvitationScreens([
+      ...screens.slice(0, 4),
+      { ...screens[4], template_text: '{author.name}' },
+    ])).toThrow(/небезопасный шаблон/i)
+
+    expect(() => normalizeInvitationScreens([
+      { ...screens[0], template_text: '{recipient}' },
+      ...screens.slice(1),
+    ])).toThrow(/другому экрану/i)
   })
 
   it('rejects an unknown or incompatible image key', () => {

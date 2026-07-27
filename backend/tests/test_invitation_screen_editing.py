@@ -19,7 +19,7 @@ EDITABLE_SCREEN_FIELDS = {
     "secondary_button_text",
     "image_key",
 }
-SCREEN_RESPONSE_FIELDS = {"screen_type", *EDITABLE_SCREEN_FIELDS}
+SCREEN_RESPONSE_FIELDS = {"screen_type", "template_text", *EDITABLE_SCREEN_FIELDS}
 
 
 def authorization(token: str) -> dict[str, str]:
@@ -79,6 +79,7 @@ def test_author_can_update_all_primary_screen_fields() -> None:
         "button_text": "Конечно",
         "secondary_button_text": "Не сегодня",
         "image_key": "invitation-moon",
+        "template_text": "",
     }
 
     screen = invitation.screens.get(screen_type=InvitationScreen.ScreenType.INVITATION)
@@ -170,7 +171,7 @@ def test_screen_update_rejects_invalid_field_values(field: str, value: str) -> N
 
 @pytest.mark.parametrize(
     "field",
-    ["screen_type", "invitation", "created_at", "updated_at", "unknown"],
+    ["template_text", "screen_type", "invitation", "created_at", "updated_at", "unknown"],
 )
 def test_screen_update_rejects_unknown_or_server_controlled_fields(field: str) -> None:
     """Ownership, type, timestamps, and unknown values cannot be changed."""
@@ -316,6 +317,7 @@ def test_published_public_response_uses_customized_primary_screen() -> None:
         "button_text": "Идём!",
         "secondary_button_text": "Другой раз",
         "image_key": "invitation-starlight",
+        "template_text": "",
     }
 
 

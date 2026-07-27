@@ -13,6 +13,7 @@ const screenRecord: InvitationScreenRecord = {
   button_text: 'Да! 😍',
   secondary_button_text: 'Нет',
   image_key: 'invitation-default',
+  template_text: '',
 }
 
 const acceptanceScreenRecord: InvitationScreenRecord = {
@@ -22,6 +23,7 @@ const acceptanceScreenRecord: InvitationScreenRecord = {
   button_text: 'Выбрать дату',
   secondary_button_text: '',
   image_key: 'acceptance-default',
+  template_text: '',
 }
 
 function savedScreen(payload: InvitationScreenUpdatePayload): InvitationScreenRecord {

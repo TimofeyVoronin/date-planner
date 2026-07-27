@@ -5267,3 +5267,127 @@ button {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* DPL-501: safe final-text template and rendered message. */
+.final-plan-card > p.final-plan-card__message {
+  max-width: 46ch;
+  margin: 16px auto 0;
+  color: #68495a;
+  font-size: .95rem;
+  font-weight: 700;
+  letter-spacing: normal;
+  line-height: 1.65;
+  text-transform: none;
+  text-wrap: balance;
+  white-space: pre-line;
+}
+
+.builder-mobile-preview__final-text {
+  padding: 11px 12px;
+  margin: 0;
+  color: #674858;
+  border: 1px solid rgb(207 157 178 / 24%);
+  border-radius: 13px;
+  background: rgb(255 255 255 / 72%);
+  font-size: .72rem;
+  font-weight: 700;
+  line-height: 1.55;
+  text-align: left;
+  white-space: pre-line;
+}
+
+.builder-final-template {
+  display: grid;
+  min-width: 0;
+  padding: 24px;
+  gap: 18px;
+  border: 1px solid #e5c2d0;
+  border-radius: 22px;
+  background: linear-gradient(145deg, #fffafd, #fff7fa);
+  box-shadow: 0 16px 38px rgb(90 40 61 / 8%);
+}
+
+.builder-final-template > header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.builder-final-template > header > span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 14px;
+  background: #f8e8ef;
+  font-size: 1.2rem;
+}
+
+.builder-final-template p,
+.builder-final-template h3,
+.builder-final-template strong {
+  margin: 0;
+}
+
+.builder-final-template header p {
+  color: #a55d78;
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.builder-final-template h3 {
+  margin-top: 4px;
+  color: #4f2c3d;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.builder-final-template > p {
+  color: #715565;
+  font-size: .82rem;
+  line-height: 1.6;
+}
+
+.builder-final-template__value {
+  display: block;
+  padding: 16px;
+  overflow-wrap: anywhere;
+  color: #583244;
+  border: 1px solid #e8ced8;
+  border-radius: 15px;
+  background: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: .78rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.builder-final-template__variables {
+  display: flex;
+  padding: 0;
+  margin: 10px 0 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+}
+
+.builder-final-template__variables code {
+  display: inline-flex;
+  padding: 6px 9px;
+  color: #7c4059;
+  border-radius: 999px;
+  background: #f8e8ef;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.builder-final-template > .builder-final-template__notice {
+  padding: 13px 15px;
+  color: #735542;
+  border-radius: 14px;
+  background: #fff6df;
+  font-size: .76rem;
+}

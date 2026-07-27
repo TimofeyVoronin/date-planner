@@ -4,9 +4,9 @@ import { useBuilderPreview } from '../../composables/useBuilderPreview'
 import type {
   BuilderPreviewDemoOption,
   BuilderPreviewScreen,
+  BuilderPreviewScreenConfig,
 } from '../../types/builder-preview'
 import type { InvitationImageKey } from '../../types/invitation-image'
-import type { InvitationScreenEditForm } from '../../types/screen'
 import type { BuilderStepNumber } from '../../utils/builder'
 import {
   BUILDER_PREVIEW_ACTIVITIES,
@@ -16,6 +16,10 @@ import {
   getBuilderPreviewDevice,
   getBuilderPreviewScreenDefinition,
 } from '../../utils/builderPreview'
+import {
+  buildPreviewFinalTemplateContext,
+  renderFinalTextTemplateSafely,
+} from '../../utils/finalTemplates'
 import {
   getInvitationImageByKey,
   resolveInvitationImageUrl,
@@ -28,7 +32,7 @@ const props = defineProps<{
   dateOptions: BuilderPreviewDemoOption[]
   message: string
   recipientName: string
-  screens: Record<BuilderPreviewScreen, InvitationScreenEditForm>
+  screens: Record<BuilderPreviewScreen, BuilderPreviewScreenConfig>
 }>()
 
 const config = useRuntimeConfig()
@@ -51,6 +55,15 @@ const selectedDate = computed(() => (
 const selectedActivity = computed(() => (
   visibleActivityOptions.value.find(option => option.id === preview.selectedActivityId.value)
   ?? visibleActivityOptions.value[0]!
+))
+const renderedFinalText = computed(() => renderFinalTextTemplateSafely(
+  activeScreenConfig.value.template_text,
+  buildPreviewFinalTemplateContext({
+    activity: selectedActivity.value,
+    authorName: props.authorName,
+    date: selectedDate.value,
+    recipientName: props.recipientName,
+  }),
 ))
 const usesDraftDateOptions = computed(() => props.dateOptions.length > 0)
 const usesDraftActivityOptions = computed(() => props.activityOptions.length > 0)
@@ -352,6 +365,9 @@ function handleNoClick(event: MouseEvent): void {
             <h4>{{ activeScreenConfig.title || 'Тогда договорились!' }}</h4>
             <p class="builder-mobile-preview__subtitle">
               {{ activeScreenConfig.subtitle || 'Ваш примерный план уже собран.' }}
+            </p>
+            <p class="builder-mobile-preview__final-text">
+              {{ renderedFinalText }}
             </p>
             <dl class="builder-mobile-preview__plan">
               <div>

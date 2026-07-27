@@ -21,6 +21,7 @@ export type InvitationScreenRecord = {
   button_text: string
   secondary_button_text: string
   image_key: InvitationImageKey
+  template_text: string
 }
 
 export type InvitationScreenEditForm = Pick<
@@ -33,3 +34,7 @@ export type InvitationScreenEditableField = keyof InvitationScreenEditForm
 export type InvitationScreenValidationErrors = Partial<
   Record<InvitationScreenEditableField, string>
 >
+
+export type FinalTemplateUpdatePayload = {
+  template_text: string
+}

@@ -1,4 +1,5 @@
 import type { InvitationImageKey } from './invitation-image'
+import type { InvitationScreenEditForm } from './screen'
 
 import type { BuilderStepNumber } from '../utils/builder'
 
@@ -39,4 +40,8 @@ export type BuilderPreviewNoButtonTransform = {
   scale: number
   x: number
   y: number
+}
+
+export type BuilderPreviewScreenConfig = InvitationScreenEditForm & {
+  template_text: string
 }
