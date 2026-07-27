@@ -147,7 +147,7 @@ function requestSave(): void {
           <span class="plan-choice__marker" aria-hidden="true" />
           <span class="plan-choice__number">Вариант {{ index + 1 }}</span>
           <time class="plan-choice__date" :datetime="option.starts_at">
-            {{ formatPlanOptionDate(option.starts_at) }}
+            {{ formatPlanOptionDate(option.starts_at, option.time_zone) }}
           </time>
           <strong class="plan-choice__place">{{ option.place }}</strong>
           <span v-if="option.comment" class="plan-choice__comment">{{ option.comment }}</span>

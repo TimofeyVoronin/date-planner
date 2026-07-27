@@ -152,6 +152,31 @@ def test_plan_option_count_boundaries_and_field_limits_are_accepted(count: int) 
     assert response.json()["plan_options"][0]["comment"] == "C" * 500
 
 
+def test_plan_preserves_the_author_time_zone_for_shared_final_display() -> None:
+    """The API stores a valid IANA zone next to the absolute meeting instant."""
+    invitation, token = accepted_invitation()
+    payload = plan_payload()
+    payload["options"][0]["time_zone"] = "Europe/Moscow"
+    payload["options"][1]["time_zone"] = "Asia/Yekaterinburg"
+
+    response = APIClient().put(
+        plan_path(invitation.pk),
+        payload,
+        format="json",
+        **authorization(token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [option["time_zone"] for option in response.json()["plan_options"]] == [
+        "Europe/Moscow",
+        "Asia/Yekaterinburg",
+    ]
+    assert list(invitation.plan_options.values_list("time_zone", flat=True)) == [
+        "Europe/Moscow",
+        "Asia/Yekaterinburg",
+    ]
+
+
 def test_plan_put_replaces_options_atomically_and_preserves_new_order() -> None:
     """A changed collection removes old rows and stores only the new order."""
     invitation, token = accepted_invitation()
@@ -255,6 +280,8 @@ def test_plan_rejects_invalid_collection_sizes(payload: object) -> None:
         "long_place",
         "null_comment",
         "long_comment",
+        "invalid_time_zone",
+        "unsafe_time_zone_key",
     ],
 )
 def test_plan_rejects_invalid_option_fields(case: str) -> None:
@@ -280,6 +307,10 @@ def test_plan_rejects_invalid_option_fields(case: str) -> None:
         option["comment"] = None
     elif case == "long_comment":
         option["comment"] = "C" * 501
+    elif case == "invalid_time_zone":
+        option["time_zone"] = "Mars/Olympus"
+    elif case == "unsafe_time_zone_key":
+        option["time_zone"] = "/etc/localtime"
 
     response = APIClient().put(
         plan_path(invitation.pk),
@@ -971,4 +1002,4 @@ def test_openapi_documents_both_planning_contracts() -> None:
     invitation_properties = schema["components"]["schemas"]["Invitation"]["properties"]
     assert {"plan_options", "selected_option_id", "selected_at"} <= set(invitation_properties)
     option_properties = schema["components"]["schemas"]["InvitationPlanOption"]["properties"]
-    assert "position" in option_properties
+    assert {"position", "time_zone"} <= set(option_properties)

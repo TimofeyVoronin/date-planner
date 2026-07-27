@@ -14,6 +14,7 @@ dependencies = [
     "drf-spectacular==0.30.0",
     "gunicorn==26.0.0",
     "psycopg[binary]==3.3.4",
+    "tzdata==2026.3",
 ]
 
 [project.optional-dependencies]

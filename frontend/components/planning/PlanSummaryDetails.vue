@@ -20,7 +20,7 @@ const props = withDefaults(defineProps<Props>(), {
       <div>
         <small>Дата и время</small>
         <time :datetime="props.option.starts_at">
-          {{ formatPlanOptionDate(props.option.starts_at) }}
+          {{ formatPlanOptionDate(props.option.starts_at, props.option.time_zone) }}
         </time>
       </div>
     </div>

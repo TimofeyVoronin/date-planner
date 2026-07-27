@@ -71,6 +71,7 @@ class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
             existing_options = list(invitation.plan_options.all())
             options_unchanged = len(existing_options) == len(submitted_options) and all(
                 existing.starts_at == submitted["starts_at"]
+                and existing.time_zone == submitted["time_zone"]
                 and existing.place == submitted["place"]
                 and existing.comment == submitted["comment"]
                 for existing, submitted in zip(
@@ -145,6 +146,7 @@ class InvitationPlanOptionsView(NoStoreResponseMixin, generics.GenericAPIView):
                         InvitationPlanOption(
                             invitation=invitation,
                             starts_at=option["starts_at"],
+                            time_zone=option["time_zone"],
                             place=option["place"],
                             comment=option["comment"],
                             position=position,

@@ -1,61 +1,36 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
-import type { ActivityOptionRecord } from '../../types/activity'
-import type { InvitationPlanOption } from '../../types/invitation'
-import type { InvitationScreenRecord } from '../../types/screen'
-import {
-  DEFAULT_FINAL_TEXT_TEMPLATE,
-  buildFinalTemplateContext,
-  renderFinalTextTemplateSafely,
-} from '../../utils/finalTemplates'
+import type { ConfirmedPlanRecord } from '../../types/invitation'
 import {
   getInvitationImageByKey,
   resolveInvitationImageUrl,
 } from '../../utils/invitationImages'
-import { formatPlanOptionDate } from '../../utils/planning'
+import {
+  confirmedPlanToActivity,
+  confirmedPlanToOption,
+  formatPlanOptionDate,
+} from '../../utils/planning'
 import PlanSummaryDetails from './PlanSummaryDetails.vue'
 
 type Props = {
-  activity?: ActivityOptionRecord | null
   announce?: boolean
-  authorName: string
-  confirmedAt: string
-  option: InvitationPlanOption
-  recipientName: string
-  screen?: InvitationScreenRecord | null
-  templateText?: string
+  plan: ConfirmedPlanRecord
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  activity: null,
   announce: false,
-  screen: null,
-  templateText: DEFAULT_FINAL_TEXT_TEMPLATE,
 })
 const config = useRuntimeConfig()
 const titleId = useId()
 const titleRef = ref<HTMLElement | null>(null)
-const templateText = computed(() => (
-  props.screen?.template_text || props.templateText || DEFAULT_FINAL_TEXT_TEMPLATE
-))
-const renderedText = computed(() => renderFinalTextTemplateSafely(
-  templateText.value,
-  buildFinalTemplateContext({
-    activityTitle: props.activity?.title,
-    authorName: props.authorName,
-    place: props.option.place,
-    recipientName: props.recipientName,
-    startsAt: props.option.starts_at,
-  }),
-))
-const finalImage = computed(() => (
-  props.screen ? getInvitationImageByKey(props.screen.image_key) : null
-))
+const finalImage = computed(() => getInvitationImageByKey(props.plan.final_image_key))
 const finalImageUrl = computed(() => (
   finalImage.value
     ? resolveInvitationImageUrl(finalImage.value.assetPath, config.app.baseURL)
     : null
 ))
+const option = computed(() => confirmedPlanToOption(props.plan))
+const activity = computed(() => confirmedPlanToActivity(props.plan))
 
 function focusTitle(): void {
   void nextTick(() => titleRef.value?.focus())
@@ -101,19 +76,20 @@ watch(
       ref="titleRef"
       :tabindex="props.announce ? -1 : undefined"
     >
-      {{ props.screen?.title || 'Свидание подтверждено!' }}
+      {{ props.plan.final_title }}
     </h2>
-    <p v-if="props.screen?.subtitle" class="final-plan-card__subtitle">
-      {{ props.screen.subtitle }}
+    <p v-if="props.plan.final_subtitle" class="final-plan-card__subtitle">
+      {{ props.plan.final_subtitle }}
     </p>
-    <p class="final-plan-card__message">{{ renderedText }}</p>
+    <p class="final-plan-card__message">{{ props.plan.final_text }}</p>
     <PlanSummaryDetails
-      :activity="props.activity"
-      :option="props.option"
+      :activity="activity"
+      :option="option"
     />
     <p class="final-plan-card__footer">
       <span aria-hidden="true">✓</span>
-      Зафиксировано {{ formatPlanOptionDate(props.confirmedAt) }}
+      Зафиксировано
+      {{ formatPlanOptionDate(props.plan.confirmed_at, props.plan.time_zone) }}
     </p>
   </article>
 </template>
