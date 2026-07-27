@@ -62,6 +62,10 @@ const selectedPlanOption = computed(() => findSelectedPlanOption(
   invitation.value?.plan_options ?? [],
   invitation.value?.selected_option_id ?? null,
 ))
+const selectedActivityOption = computed(() => findSelectedActivityOption(
+  invitation.value?.activity_options ?? [],
+  invitation.value?.selected_activity_option_id ?? null,
+))
 const invitationScreen = computed(() => (
   getInvitationScreenByType(invitation.value?.screens ?? [], 'invitation')
 ))
@@ -496,6 +500,7 @@ onMounted(loadInvitation)
           <template v-if="invitation.confirmed_at">
             <FinalPlanCard
               v-if="selectedPlanOption"
+              :activity="selectedActivityOption"
               :announce="announceFinalPlan"
               :confirmed-at="invitation.confirmed_at"
               :option="selectedPlanOption"

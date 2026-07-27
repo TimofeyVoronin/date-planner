@@ -22,6 +22,7 @@ These rules apply to the entire repository.
 - Reopen a published option set only when its selected option is both expired and unconfirmed. Recovery must atomically replace the whole set, clear the stale selection, preserve the invitation mode and publication state, reject future or confirmed selections, and keep exact retries idempotent.
 - Keep activity options owned by one extended invitation and ordered by their submitted array position. The first management API replaces the complete collection atomically, accepts three–six draft options, keeps exact retries idempotent, and freezes edits after publication.
 - Keep recipient activity selection public only for accepted published extended invitations. Expose prepared activities only after acceptance, allow one mutable selection until final confirmation, preserve exact retries, reject foreign options, and require an activity before confirming when the invitation has activity choices.
+- Bind final confirmation to the exact date/activity combination shown to the author. Submit both expected UUIDs, lock the invitation while comparing them with the latest selections, reject stale activity snapshots, and render the same combined plan details before and after confirmation on both capabilities.
 - Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 

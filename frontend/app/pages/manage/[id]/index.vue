@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import InvitationDetailsEditor from '../../../../components/invitation/InvitationDetailsEditor.vue'
 import FinalPlanCard from '../../../../components/planning/FinalPlanCard.vue'
+import PlanSummaryDetails from '../../../../components/planning/PlanSummaryDetails.vue'
 import PlanOptionsEditor from '../../../../components/planning/PlanOptionsEditor.vue'
 import { copyTextWithFallback } from '../../../../composables/useClipboard'
 import { useInvitationsApi } from '../../../../composables/useInvitationsApi'
@@ -364,7 +365,10 @@ async function confirmSelectedPlan(): Promise<void> {
     const nextInvitation = await api.confirmPlan(
       invitationId.value,
       token,
-      buildPlanConfirmationPayload(expectedSelectedOption.id),
+      buildPlanConfirmationPayload(
+        expectedSelectedOption.id,
+        selectedActivityOption.value?.id ?? null,
+      ),
     )
 
     applyManagedInvitation(nextInvitation)
@@ -665,6 +669,7 @@ onUnmounted(() => {
             <template v-if="confirmationStage === 'confirmed'">
               <FinalPlanCard
                 v-if="selectedPlanOption && invitation.confirmed_at"
+                :activity="selectedActivityOption"
                 :announce="confirmationJustCompleted"
                 :confirmed-at="invitation.confirmed_at"
                 :option="selectedPlanOption"
@@ -689,36 +694,21 @@ onUnmounted(() => {
               </header>
 
               <div v-if="selectedPlanOption" class="plan-confirmation__summary">
-                <time :datetime="selectedPlanOption.starts_at">
-                  {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}
-                </time>
-                <strong>{{ selectedPlanOption.place }}</strong>
-                <span v-if="selectedPlanOption.comment">{{ selectedPlanOption.comment }}</span>
-                <small v-if="invitation.selected_at">
-                  Получатель выбрал {{ formatDate(invitation.selected_at) }}
-                </small>
-              </div>
-              <div
-                v-if="selectedActivityOption"
-                class="plan-confirmation__activity"
-              >
-                <span aria-hidden="true">✨</span>
-                <div>
-                  <small>Выбранная активность</small>
-                  <strong>{{ selectedActivityOption.title }}</strong>
-                  <span v-if="selectedActivityOption.place">
-                    {{ selectedActivityOption.place }}
-                  </span>
-                  <time
-                    v-if="invitation.activity_selected_at"
-                    :datetime="invitation.activity_selected_at"
-                  >
-                    Выбрано: {{ formatDate(invitation.activity_selected_at) }}
-                  </time>
+                <PlanSummaryDetails
+                  :activity="selectedActivityOption"
+                  :option="selectedPlanOption"
+                />
+                <div class="plan-confirmation__selection-times">
+                  <small v-if="invitation.selected_at">
+                    Дата выбрана {{ formatDate(invitation.selected_at) }}
+                  </small>
+                  <small v-if="invitation.activity_selected_at">
+                    Активность выбрана {{ formatDate(invitation.activity_selected_at) }}
+                  </small>
                 </div>
               </div>
               <p
-                v-else-if="activitySelectionRequired"
+                v-if="activitySelectionRequired && !selectedActivityOption"
                 class="plan-confirmation__activity-waiting"
                 role="status"
               >

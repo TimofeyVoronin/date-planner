@@ -92,10 +92,14 @@ export function getPlanRecoveryPresentation(
   }
 }
 
-export function buildPlanConfirmationPayload(optionId: string): PlanConfirmationPayload {
+export function buildPlanConfirmationPayload(
+  optionId: string,
+  activityOptionId: string | null,
+): PlanConfirmationPayload {
   return {
     confirmed: true,
     option_id: optionId,
+    activity_option_id: activityOptionId,
   }
 }
 
@@ -577,6 +581,13 @@ export function parsePlanConfirmationApiError(error: unknown): InvitationApiErro
     return {
       ...parsedError,
       message: 'Получатель ещё не выбрал активность. Обнови статус после его выбора.',
+    }
+  }
+
+  if (parsedError.code === 'selected_activity_changed') {
+    return {
+      ...parsedError,
+      message: 'Получатель изменил активность. Обнови данные и проверь новую комбинацию.',
     }
   }
 

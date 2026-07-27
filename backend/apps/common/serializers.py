@@ -630,13 +630,21 @@ class StrictUUIDField(serializers.UUIDField):
 
 
 class InvitationConfirmationSerializer(serializers.Serializer):
-    """Validate the author's irreversible final confirmation."""
+    """Validate the author's irreversible confirmation of the shown plan."""
 
     confirmed = LiteralTrueBooleanField(
         help_text="Must be the literal JSON boolean true; confirmation cannot be undone."
     )
     option_id = StrictUUIDField(
-        help_text="The selected option UUID visible to the author when confirming."
+        help_text="The selected date option UUID visible to the author when confirming."
+    )
+    activity_option_id = StrictUUIDField(
+        required=False,
+        allow_null=True,
+        help_text=(
+            "The selected activity option UUID visible to the author, or null when the "
+            "invitation has no activity choices."
+        ),
     )
 
 

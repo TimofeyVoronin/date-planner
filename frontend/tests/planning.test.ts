@@ -355,10 +355,16 @@ describe('persisted planning state', () => {
     expect(findSelectedPlanOption(options, null)).toBeNull()
   })
 
-  it('binds final confirmation to the option shown to the author', () => {
-    expect(buildPlanConfirmationPayload('shown-option')).toEqual({
+  it('binds final confirmation to the date and activity shown to the author', () => {
+    expect(buildPlanConfirmationPayload('shown-option', 'shown-activity')).toEqual({
       confirmed: true,
       option_id: 'shown-option',
+      activity_option_id: 'shown-activity',
+    })
+    expect(buildPlanConfirmationPayload('shown-option', null)).toEqual({
+      confirmed: true,
+      option_id: 'shown-option',
+      activity_option_id: null,
     })
   })
 
@@ -495,6 +501,16 @@ describe('persisted planning state', () => {
     expect(expiredError.code).toBe('selected_option_expired')
     expect(expiredError.message).toContain('Время выбранного варианта уже прошло')
     expect(expiredError.message).toContain('Обнови данные')
+
+    const changedActivityError = parsePlanConfirmationApiError({
+      response: {
+        status: 409,
+        _data: { code: 'selected_activity_changed' },
+      },
+    })
+
+    expect(changedActivityError.code).toBe('selected_activity_changed')
+    expect(changedActivityError.message).toContain('изменил активность')
     expect(parsePlanConfirmationApiError({ status: 400 }).message).toContain('явным')
     expect(parsePlanConfirmationApiError({ status: 409 }).message).toContain('Обнови данные')
     expect(parsePlanConfirmationApiError({ status: 429 }).message).toContain('минуту')

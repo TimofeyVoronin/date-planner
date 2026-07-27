@@ -2007,34 +2007,6 @@ button {
   background: rgb(255 255 255 / 70%);
 }
 
-.plan-confirmation__summary time {
-  color: #795641;
-  font-size: .78rem;
-  font-weight: 800;
-}
-
-.plan-confirmation__summary strong {
-  margin-top: 3px;
-  color: #3d2a33;
-  font-size: 1rem;
-  overflow-wrap: anywhere;
-}
-
-.plan-confirmation__summary > span {
-  margin-top: 5px;
-  color: #765c68;
-  font-size: .78rem;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.plan-confirmation__summary small {
-  margin-top: 9px;
-  color: #958075;
-  font-size: .7rem;
-}
-
 .plan-confirmation__warning {
   padding: 13px 14px;
   margin-top: 15px !important;
@@ -2165,14 +2137,17 @@ button {
   text-wrap: balance;
 }
 
-.final-plan-card__details {
+.plan-summary-details {
   display: grid;
-  margin-top: 22px;
   gap: 10px;
   text-align: left;
 }
 
-.final-plan-card__details > div {
+.final-plan-card .plan-summary-details {
+  margin-top: 22px;
+}
+
+.plan-summary-details > div {
   display: grid;
   padding: 14px 15px;
   align-items: start;
@@ -2183,18 +2158,18 @@ button {
   grid-template-columns: auto minmax(0, 1fr);
 }
 
-.final-plan-card__details > div > span:first-child {
+.plan-summary-details > div > span:first-child {
   font-size: 1.1rem;
 }
 
-.final-plan-card__details small,
-.final-plan-card__details time,
-.final-plan-card__details strong,
-.final-plan-card__details div > span {
+.plan-summary-details small,
+.plan-summary-details time,
+.plan-summary-details strong,
+.plan-summary-details div > span {
   display: block;
 }
 
-.final-plan-card__details small {
+.plan-summary-details small {
   color: #759283;
   font-size: .65rem;
   font-weight: 900;
@@ -2202,9 +2177,9 @@ button {
   text-transform: uppercase;
 }
 
-.final-plan-card__details time,
-.final-plan-card__details strong,
-.final-plan-card__details div > span {
+.plan-summary-details time,
+.plan-summary-details strong,
+.plan-summary-details div > span {
   margin-top: 2px;
   color: #3d5147;
   font-size: .88rem;
@@ -2213,7 +2188,8 @@ button {
   overflow-wrap: anywhere;
 }
 
-.final-plan-card__details .final-plan-card__comment div > span {
+.plan-summary-details__comment div > span,
+.plan-summary-details__activity div > span {
   font-weight: 600;
   white-space: pre-wrap;
 }
@@ -5250,50 +5226,22 @@ button {
   outline-offset: 3px;
 }
 
-.plan-confirmation__activity {
-  display: flex;
-  padding: 14px 16px;
-  align-items: flex-start;
-  gap: 11px;
-  border: 1px solid #ead4dd;
-  border-radius: 16px;
+.plan-confirmation__summary .plan-summary-details > div {
+  border-color: #ead4dd;
   background: #fff9fc;
 }
 
-.plan-confirmation__activity > span {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 50%;
-  background: #ffeaf2;
+.plan-confirmation__selection-times {
+  display: flex;
+  margin-top: 10px;
+  flex-wrap: wrap;
+  gap: 6px 14px;
 }
 
-.plan-confirmation__activity > div {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.plan-confirmation__activity small {
-  color: #ad5977;
-  font-size: .66rem;
-  font-weight: 900;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
-.plan-confirmation__activity strong {
-  color: #4c293a;
-  overflow-wrap: anywhere;
-}
-
-.plan-confirmation__activity span,
-.plan-confirmation__activity time {
-  color: #765b68;
-  font-size: .75rem;
-  overflow-wrap: anywhere;
+.plan-confirmation__selection-times small {
+  margin: 0;
+  color: #958075;
+  font-size: .7rem;
 }
 
 .plan-confirmation__activity-waiting {

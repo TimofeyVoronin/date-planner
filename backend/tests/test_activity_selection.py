@@ -373,6 +373,110 @@ def test_confirmation_requires_activity_when_extended_options_exist() -> None:
     assert selected_date.confirmed_at is None
 
 
+def test_confirmation_binds_the_date_and_activity_shown_to_the_author() -> None:
+    """A final confirmation succeeds only for the exact visible combination."""
+    invitation, token = create_invitation()
+    activities = create_activities(invitation)
+    activities[1].selected_at = django_now()
+    activities[1].save(update_fields=("selected_at",))
+    selected_date = create_selected_date(invitation)
+    confirmed_at = django_now()
+
+    with patch("apps.common.confirmation_views.now", return_value=confirmed_at):
+        response = APIClient().put(
+            confirmation_path(invitation),
+            {
+                "confirmed": True,
+                "option_id": str(selected_date.pk),
+                "activity_option_id": str(activities[1].pk),
+            },
+            format="json",
+            **authorization(token),
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["selected_option_id"] == str(selected_date.pk)
+    assert response.json()["selected_activity_option_id"] == str(activities[1].pk)
+    assert response.json()["confirmed_at"] == confirmed_at.isoformat().replace("+00:00", "Z")
+    selected_date.refresh_from_db()
+    assert selected_date.confirmed_at == confirmed_at
+
+
+@pytest.mark.parametrize("activity_option_id", [None, "other"])
+def test_confirmation_rejects_a_stale_activity_snapshot(activity_option_id: str | None) -> None:
+    """The author must refresh when the recipient changed the shown activity."""
+    invitation, token = create_invitation()
+    activities = create_activities(invitation)
+    activities[0].selected_at = django_now()
+    activities[0].save(update_fields=("selected_at",))
+    selected_date = create_selected_date(invitation)
+    submitted_activity_id = str(activities[1].pk) if activity_option_id == "other" else None
+
+    response = APIClient().put(
+        confirmation_path(invitation),
+        {
+            "confirmed": True,
+            "option_id": str(selected_date.pk),
+            "activity_option_id": submitted_activity_id,
+        },
+        format="json",
+        **authorization(token),
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json() == {
+        "code": "selected_activity_changed",
+        "detail": (
+            "The selected activity changed before confirmation. Refresh the plan and "
+            "confirm the current combination."
+        ),
+    }
+    selected_date.refresh_from_db()
+    assert selected_date.confirmed_at is None
+
+
+def test_exact_combination_confirmation_retry_is_idempotent() -> None:
+    """Retrying the same date/activity pair preserves confirmation timestamps."""
+    invitation, token = create_invitation()
+    activities = create_activities(invitation)
+    activities[0].selected_at = django_now()
+    activities[0].save(update_fields=("selected_at",))
+    selected_date = create_selected_date(invitation)
+    confirmed_at = django_now()
+    payload = {
+        "confirmed": True,
+        "option_id": str(selected_date.pk),
+        "activity_option_id": str(activities[0].pk),
+    }
+    client = APIClient()
+
+    with patch("apps.common.confirmation_views.now", return_value=confirmed_at):
+        first = client.put(
+            confirmation_path(invitation),
+            payload,
+            format="json",
+            **authorization(token),
+        )
+    invitation.refresh_from_db()
+    first_updated_at = invitation.updated_at
+
+    with patch("apps.common.confirmation_views.now") as mocked_now:
+        repeated = client.put(
+            confirmation_path(invitation),
+            payload,
+            format="json",
+            **authorization(token),
+        )
+
+    assert first.status_code == status.HTTP_200_OK
+    assert repeated.status_code == status.HTTP_200_OK
+    mocked_now.assert_not_called()
+    invitation.refresh_from_db()
+    selected_date.refresh_from_db()
+    assert invitation.updated_at == first_updated_at
+    assert selected_date.confirmed_at == confirmed_at
+
+
 def test_database_allows_only_one_selected_activity_per_invitation() -> None:
     """The database protects selection uniqueness outside the public API."""
     invitation, _ = create_invitation()

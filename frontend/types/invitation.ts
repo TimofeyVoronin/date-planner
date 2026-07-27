@@ -57,6 +57,7 @@ export type PlanSelectionPayload = {
 export type PlanConfirmationPayload = {
   confirmed: true
   option_id: string
+  activity_option_id: string | null
 }
 
 export type InvitationRecord = InvitationCreatePayload & {
