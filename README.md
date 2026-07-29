@@ -407,3 +407,17 @@ GitHub Actions выполняет те же категории проверок 
 Эпик `publication-handoff` завершён задачами DPL-701–DPL-703. Перед началом следующего эпика нужно слить его в `main`, повторно выполнить `make quality` и подготовить новый полный архив проекта.
 
 Регистрация на текущем этапе не нужна: секретная management-ссылка подтверждает право просмотра страницы автора. Аккаунты стоит добавлять только тогда, когда появятся личный кабинет, восстановление доступа, список нескольких приглашений одного автора или управление ими с разных устройств. Фоновые очереди и deployment-инфраструктуру также следует добавлять по мере конкретной необходимости.
+
+## Production configuration baseline
+
+The `deployment-readiness` epic starts with DPL-801. Production keeps the existing environment-driven settings but now exposes explicit HTTPS, proxy, secure-cookie, HSTS, CSRF-origin, logging, and worker controls. Use `.env.production.example` only as a safe checklist and store real values in the deployment platform.
+
+Before deployment, run:
+
+```bash
+make check-deploy
+```
+
+This command executes Django's deployment checks with a synthetic fully secure configuration and fails on warnings. It is part of `make quality`, so security-setting regressions are checked in CI without changing local HTTP behavior. A real staging or production environment must also run `python manage.py check --deploy` with its actual secret, host names, proxy count, and HTTPS settings, then review every warning before release.
+
+Do not enable `DJANGO_TRUST_PROXY_HEADERS` unless the trusted reverse proxy overwrites `X-Forwarded-Proto`. Start HSTS with a short duration, verify that every public endpoint and asset works exclusively over HTTPS, and only then increase the duration or enable subdomain/preload directives. The production example intentionally leaves preload disabled until that decision is made.

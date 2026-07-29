@@ -3,26 +3,9 @@
 import os
 from pathlib import Path
 
+from config.environment import env_bool, env_int, env_list
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-
-def env_bool(name: str, default: bool) -> bool:
-    """Read a boolean environment variable with strict, predictable parsing."""
-    value = os.getenv(name)
-    if value is None:
-        return default
-
-    normalized = value.strip().lower()
-    if normalized in {"1", "true", "yes", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(f"{name} must be a boolean value")
-
-
-def env_list(name: str, default: str) -> list[str]:
-    """Read a comma-separated environment variable."""
-    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
 
 
 SECRET_KEY = os.getenv(
@@ -111,6 +94,23 @@ CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000",
 )
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+
+SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", False)
+SESSION_COOKIE_SECURE = env_bool("DJANGO_SESSION_COOKIE_SECURE", False)
+CSRF_COOKIE_SECURE = env_bool("DJANGO_CSRF_COOKIE_SECURE", False)
+SECURE_HSTS_SECONDS = env_int("DJANGO_SECURE_HSTS_SECONDS", 0, minimum=0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
+    "DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS",
+    False,
+)
+SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD", False)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
+
+if env_bool("DJANGO_TRUST_PROXY_HEADERS", False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 CACHES = {
     "default": {
@@ -138,7 +138,7 @@ REST_FRAMEWORK = {
     },
     # There is no reverse proxy in the current Compose stack, so client identity
     # must come from REMOTE_ADDR rather than a spoofable X-Forwarded-For header.
-    "NUM_PROXIES": int(os.getenv("DRF_NUM_PROXIES", "0")),
+    "NUM_PROXIES": env_int("DRF_NUM_PROXIES", 0, minimum=0),
 }
 
 SPECTACULAR_SETTINGS = {
