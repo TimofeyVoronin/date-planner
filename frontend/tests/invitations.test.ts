@@ -6,7 +6,9 @@ import type {
 } from '../types/invitation'
 import {
   buildInvitationUpdatePayload,
+  buildManagementInvitationPath,
   buildManagementInvitationUrl,
+  buildPublicationSuccessPath,
   buildPublicInvitationUrl,
   createInvitationEditForm,
   hasInvitationValidationErrors,
@@ -237,17 +239,30 @@ describe('invitation links', () => {
   const id = 'd9428888-122b-11e1-b85c-61cd3cbb3210'
   const token = 'a'.repeat(43)
 
-  it('builds public and fragment-only management URLs', () => {
+  it('builds public, management, and publication-success routes safely', () => {
     expect(buildPublicInvitationUrl('https://dates.example/', id)).toBe(
       `https://dates.example/invite/${id}`,
     )
+    expect(buildManagementInvitationPath(id)).toBe(`/manage/${id}`)
+    expect(buildPublicationSuccessPath(id)).toBe(`/manage/${id}/published`)
+    expect(buildPublicationSuccessPath(id, token)).toBe(
+      `/manage/${id}/published#token=${token}`,
+    )
+
     const managementUrl = buildManagementInvitationUrl('https://dates.example/', id, token)
     const parsedManagementUrl = new URL(managementUrl)
+    const publicationUrl = new URL(
+      buildPublicationSuccessPath(id, token),
+      'https://dates.example',
+    )
 
     expect(managementUrl).toBe(`https://dates.example/manage/${id}#token=${token}`)
     expect(parsedManagementUrl.search).toBe('')
     expect(parsedManagementUrl.pathname).not.toContain(token)
     expect(parsedManagementUrl.hash).toBe(`#token=${token}`)
+    expect(publicationUrl.search).toBe('')
+    expect(publicationUrl.pathname).not.toContain(token)
+    expect(publicationUrl.hash).toBe(`#token=${token}`)
   })
 
   it('extracts only a correctly shaped token from the fragment', () => {

@@ -8,12 +8,11 @@ import {
   INVITATION_NAME_MAX_LENGTH,
   type InvitationCreatePayload,
   type InvitationCreationMode,
-  type InvitationPublicationStatus,
   type InvitationValidationErrors,
 } from '../../types/invitation'
 import {
   buildManagementInvitationUrl,
-  buildPublicInvitationUrl,
+  buildPublicationSuccessPath,
   getInvitationCreationModePresentation,
   hasInvitationValidationErrors,
   normalizeInvitationPayload,
@@ -21,14 +20,11 @@ import {
   validateInvitationPayload,
 } from '../../utils/invitations'
 
-type CopyTarget = 'management' | 'public'
 type CopyState = 'idle' | 'copied' | 'failed'
 
-type CreatedLinks = {
+type CreatedDraftLink = {
   creationMode: InvitationCreationMode
   management: string
-  publicationStatus: InvitationPublicationStatus
-  public: string | null
 }
 
 const api = useInvitationsApi()
@@ -41,16 +37,13 @@ const form = reactive<InvitationCreatePayload>({
 const validationErrors = ref<InvitationValidationErrors>({})
 const requestError = ref('')
 const isSubmitting = ref(false)
-const createdLinks = ref<CreatedLinks | null>(null)
+const createdDraftLink = ref<CreatedDraftLink | null>(null)
 const statusHeadingRef = ref<HTMLElement | null>(null)
 const creationModes = INVITATION_CREATION_MODES
 const selectedModePresentation = computed(() => (
   getInvitationCreationModePresentation(form.creation_mode)
 ))
-const copyState = reactive<Record<CopyTarget, CopyState>>({
-  management: 'idle',
-  public: 'idle',
-})
+const copyState = ref<CopyState>('idle')
 
 function fieldDescription(...ids: Array<string | false | undefined>): string | undefined {
   const description = ids.filter((id): id is string => typeof id === 'string').join(' ')
@@ -68,9 +61,8 @@ async function submitInvitation(): Promise<void> {
   }
 
   requestError.value = ''
-  createdLinks.value = null
-  copyState.public = 'idle'
-  copyState.management = 'idle'
+  createdDraftLink.value = null
+  copyState.value = 'idle'
   validationErrors.value = validateInvitationPayload(form)
 
   if (hasInvitationValidationErrors(validationErrors.value)) {
@@ -83,21 +75,25 @@ async function submitInvitation(): Promise<void> {
 
   try {
     const invitation = await api.createInvitation(normalizeInvitationPayload(form))
-    const origin = window.location.origin
 
-    createdLinks.value = {
+    validationErrors.value = {}
+
+    if (invitation.publication_status === 'published') {
+      await navigateTo(buildPublicationSuccessPath(
+        invitation.id,
+        invitation.management_token,
+      ))
+      return
+    }
+
+    createdDraftLink.value = {
       creationMode: invitation.creation_mode,
-      publicationStatus: invitation.publication_status,
-      public: invitation.publication_status === 'published'
-        ? buildPublicInvitationUrl(origin, invitation.id)
-        : null,
       management: buildManagementInvitationUrl(
-        origin,
+        window.location.origin,
         invitation.id,
         invitation.management_token,
       ),
     }
-    validationErrors.value = {}
   }
   catch (error: unknown) {
     const parsedError = parseInvitationApiError(error)
@@ -111,20 +107,14 @@ async function submitInvitation(): Promise<void> {
   }
 }
 
-async function copyLink(target: CopyTarget): Promise<void> {
-  const links = createdLinks.value
-
-  if (!links) {
+async function copyDraftLink(): Promise<void> {
+  if (!createdDraftLink.value) {
     return
   }
 
-  const link = links[target]
-
-  if (!link) {
-    return
-  }
-
-  copyState[target] = await copyTextWithFallback(link) ? 'copied' : 'failed'
+  copyState.value = await copyTextWithFallback(createdDraftLink.value.management)
+    ? 'copied'
+    : 'failed'
 }
 </script>
 
@@ -283,7 +273,7 @@ async function copyLink(target: CopyTarget): Promise<void> {
     </div>
 
     <div
-      v-else-if="createdLinks"
+      v-else-if="createdDraftLink"
       ref="statusHeadingRef"
       class="created-invitation"
       tabindex="-1"
@@ -292,81 +282,37 @@ async function copyLink(target: CopyTarget): Promise<void> {
       <div class="created-invitation__intro">
         <span class="created-invitation__icon" aria-hidden="true">✓</span>
         <div>
-          <h3 id="created-invitation-title">
-            {{ createdLinks.publicationStatus === 'draft'
-              ? 'Черновик создан'
-              : 'Приглашение готово' }}
-          </h3>
-          <p>
-            {{ createdLinks.publicationStatus === 'draft'
-              ? 'Сохрани секретную ссылку и продолжи настройку на странице автора.'
-              : 'Отправь получателю только первую ссылку.' }}
-          </p>
+          <h3 id="created-invitation-title">Черновик создан</h3>
+          <p>Сохрани секретную ссылку и продолжи настройку на странице автора.</p>
           <span class="created-invitation__mode">
-            {{ getInvitationCreationModePresentation(createdLinks.creationMode).icon }}
-            {{ getInvitationCreationModePresentation(createdLinks.creationMode).label }}
+            {{ getInvitationCreationModePresentation(createdDraftLink.creationMode).icon }}
+            {{ getInvitationCreationModePresentation(createdDraftLink.creationMode).label }}
           </span>
         </div>
       </div>
 
-      <div v-if="createdLinks.public" class="created-link">
-        <label for="public-invitation-link">Публичная ссылка</label>
-        <div class="created-link__controls">
-          <input
-            id="public-invitation-link"
-            :value="createdLinks.public"
-            type="text"
-            readonly
-          >
-          <button
-            type="button"
-            :aria-label="copyState.public === 'copied'
-              ? 'Публичная ссылка скопирована'
-              : 'Скопировать публичную ссылку'"
-            @click="copyLink('public')"
-          >
-            {{ copyState.public === 'copied' ? 'Скопировано' : 'Копировать' }}
-          </button>
-        </div>
-        <a :href="createdLinks.public">Открыть приглашение</a>
-        <span v-if="copyState.public === 'failed'" class="created-link__copy-error" role="status">
-          Не удалось скопировать автоматически — выдели ссылку вручную.
-        </span>
-      </div>
-
-      <div
-        class="created-link created-link--secret"
-        :class="{ 'created-link--draft': createdLinks.publicationStatus === 'draft' }"
-      >
-        <label for="management-invitation-link">
-          {{ createdLinks.publicationStatus === 'draft'
-            ? 'Секретная ссылка черновика'
-            : 'Секретная ссылка управления' }}
-        </label>
+      <div class="created-link created-link--secret created-link--draft">
+        <label for="management-invitation-link">Секретная ссылка черновика</label>
         <div class="created-link__controls">
           <input
             id="management-invitation-link"
-            :value="createdLinks.management"
+            :value="createdDraftLink.management"
             type="text"
             readonly
           >
           <button
             type="button"
-            :aria-label="copyState.management === 'copied'
+            :aria-label="copyState === 'copied'
               ? 'Секретная ссылка скопирована'
-              : 'Скопировать секретную ссылку управления'"
-            @click="copyLink('management')"
+              : 'Скопировать секретную ссылку черновика'"
+            @click="copyDraftLink"
           >
-            {{ copyState.management === 'copied' ? 'Скопировано' : 'Копировать' }}
+            {{ copyState === 'copied' ? 'Скопировано' : 'Копировать' }}
           </button>
         </div>
-        <a :href="createdLinks.management">
-          {{ createdLinks.publicationStatus === 'draft'
-            ? 'Продолжить настройку'
-            : 'Открыть управление' }}
-        </a>
+        <a :href="createdDraftLink.management">Продолжить настройку</a>
         <span
-          v-if="copyState.management === 'failed'"
+          v-if="copyState === 'failed'"
           class="created-link__copy-error"
           role="status"
         >
@@ -378,15 +324,11 @@ async function copyLink(target: CopyTarget): Promise<void> {
         <span aria-hidden="true">🔐</span>
         <strong>Сохрани секретную ссылку сейчас.</strong>
         Она открывает закрытую страницу автора, восстановить её без аккаунта нельзя.
-        <template v-if="createdLinks.publicationStatus === 'draft'">
-          Публичная ссылка появится после публикации черновика.
-        </template>
-        <template v-else>Не отправляй секретную ссылку получателю.</template>
+        Публичная ссылка появится после публикации черновика.
       </p>
 
       <p class="sr-only" aria-live="polite">
-        <template v-if="copyState.public === 'copied'">Публичная ссылка скопирована.</template>
-        <template v-if="copyState.management === 'copied'">Секретная ссылка скопирована.</template>
+        <template v-if="copyState === 'copied'">Секретная ссылка скопирована.</template>
       </p>
     </div>
   </section>

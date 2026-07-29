@@ -246,12 +246,22 @@ export function buildPublicInvitationUrl(origin: string, id: string): string {
   return `${origin.replace(/\/+$/, '')}/invite/${encodeURIComponent(id)}`
 }
 
+export function buildManagementInvitationPath(id: string): string {
+  return `/manage/${encodeURIComponent(id)}`
+}
+
+export function buildPublicationSuccessPath(id: string, token?: string): string {
+  const path = `${buildManagementInvitationPath(id)}/published`
+
+  return token ? `${path}#token=${encodeURIComponent(token)}` : path
+}
+
 export function buildManagementInvitationUrl(
   origin: string,
   id: string,
   token: string,
 ): string {
-  const baseUrl = `${origin.replace(/\/+$/, '')}/manage/${encodeURIComponent(id)}`
+  const baseUrl = `${origin.replace(/\/+$/, '')}${buildManagementInvitationPath(id)}`
 
   return `${baseUrl}#token=${encodeURIComponent(token)}`
 }
