@@ -10,7 +10,7 @@ import type { InvitationImageKey } from '../../types/invitation-image'
 import type { BuilderStepNumber } from '../../utils/builder'
 import {
   BUILDER_PREVIEW_ACTIVITIES,
-  BUILDER_PREVIEW_DATES,
+  buildBuilderPreviewDemoDateOptions,
   BUILDER_PREVIEW_DEVICES,
   BUILDER_PREVIEW_SCREEN_DEFINITIONS,
   getBuilderPreviewDevice,
@@ -29,6 +29,7 @@ const props = defineProps<{
   activityOptions: BuilderPreviewDemoOption[]
   authorName: string
   builderStep: BuilderStepNumber
+  currentTime: Date
   dateOptions: BuilderPreviewDemoOption[]
   message: string
   recipientName: string
@@ -42,8 +43,11 @@ const activeDefinition = computed(() => (
   getBuilderPreviewScreenDefinition(preview.activeScreen.value)
 ))
 const activeScreenConfig = computed(() => props.screens[preview.activeScreen.value])
+const demoDateOptions = computed(() => (
+  buildBuilderPreviewDemoDateOptions(props.currentTime)
+))
 const visibleDateOptions = computed(() => (
-  props.dateOptions.length > 0 ? props.dateOptions : BUILDER_PREVIEW_DATES
+  props.dateOptions.length > 0 ? props.dateOptions : demoDateOptions.value
 ))
 const visibleActivityOptions = computed(() => (
   props.activityOptions.length > 0 ? props.activityOptions : BUILDER_PREVIEW_ACTIVITIES

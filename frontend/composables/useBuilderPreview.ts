@@ -6,7 +6,6 @@ import type {
 import type { BuilderStepNumber } from '../utils/builder'
 import {
   BUILDER_PREVIEW_ACTIVITIES,
-  BUILDER_PREVIEW_DATES,
   getBuilderPreviewNoButtonTransform,
   getBuilderPreviewScreenForStep,
   getNextBuilderPreviewScreen,
@@ -15,17 +14,15 @@ import {
 
 export const BUILDER_PREVIEW_NO_BUTTON_ATTEMPT_LIMIT = 3
 
+const BUILDER_PREVIEW_DEFAULT_DATE_ID = 'date-friday'
+
 export function useBuilderPreview(initialStep: BuilderStepNumber = 1) {
   const activeScreen = ref<BuilderPreviewScreen>(getBuilderPreviewScreenForStep(initialStep))
   const deviceId = ref<BuilderPreviewDeviceId>('regular')
-  const selectedDateId = ref(BUILDER_PREVIEW_DATES[0]!.id)
+  const selectedDateId = ref(BUILDER_PREVIEW_DEFAULT_DATE_ID)
   const selectedActivityId = ref(BUILDER_PREVIEW_ACTIVITIES[0]!.id)
   const noButtonAttempts = ref(0)
 
-  const selectedDate = computed(() => (
-    BUILDER_PREVIEW_DATES.find(option => option.id === selectedDateId.value)
-    ?? BUILDER_PREVIEW_DATES[0]!
-  ))
   const selectedActivity = computed(() => (
     BUILDER_PREVIEW_ACTIVITIES.find(option => option.id === selectedActivityId.value)
     ?? BUILDER_PREVIEW_ACTIVITIES[0]!
@@ -62,7 +59,7 @@ export function useBuilderPreview(initialStep: BuilderStepNumber = 1) {
 
   function reset(): void {
     activeScreen.value = 'invitation'
-    selectedDateId.value = BUILDER_PREVIEW_DATES[0]!.id
+    selectedDateId.value = BUILDER_PREVIEW_DEFAULT_DATE_ID
     selectedActivityId.value = BUILDER_PREVIEW_ACTIVITIES[0]!.id
     noButtonAttempts.value = 0
   }
@@ -84,7 +81,6 @@ export function useBuilderPreview(initialStep: BuilderStepNumber = 1) {
     previousScreen,
     selectedActivity,
     selectedActivityId,
-    selectedDate,
     selectedDateId,
     goBack,
     goForward,

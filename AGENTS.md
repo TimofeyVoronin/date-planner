@@ -25,6 +25,7 @@ These rules apply to the entire repository.
 - Bind final confirmation to the exact date/activity combination shown to the author. Submit both expected UUIDs, lock the invitation while comparing them with the latest selections, reject stale activity snapshots, and render the same combined plan details before and after confirmation on both capabilities.
 - Store the IANA time-zone name with every planning option and format shared final data in that saved zone rather than whichever browser happens to render the page.
 - Treat `ConfirmedPlan` as an immutable display snapshot created exactly once inside the confirmation transaction. Public and management final cards must read that snapshot, not mutable invitation names, screen rows, or option rows; exact confirmation retries must return the original snapshot without changing timestamps.
+- Drive the public recipient page as one explicit stage derived from the latest server snapshot: invitation, date selection, activity selection, waiting for the author, or final plan. Render only one main stage at a time; the acceptance screen may be a short local transition after a successful response, but a reload must resume from persisted server state.
 - Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 

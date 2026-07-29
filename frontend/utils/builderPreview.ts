@@ -51,23 +51,88 @@ export const BUILDER_PREVIEW_DEVICES: readonly BuilderPreviewDevice[] = [
   { id: 'large', label: 'Большой', width: 430 },
 ]
 
-export const BUILDER_PREVIEW_DATES: readonly BuilderPreviewDemoOption[] = [
+type BuilderPreviewDateDefinition = {
+  description: string
+  hours: number
+  id: string
+  minutes: number
+  weekday: number
+}
+
+const BUILDER_PREVIEW_DATE_DEFINITIONS: readonly BuilderPreviewDateDefinition[] = [
   {
     id: 'date-friday',
-    label: 'Пятница, 27 июля · 19:00',
+    weekday: 5,
+    hours: 19,
+    minutes: 0,
     description: 'Кофейня у парка',
   },
   {
     id: 'date-saturday',
-    label: 'Суббота, 28 июля · 17:30',
+    weekday: 6,
+    hours: 17,
+    minutes: 30,
     description: 'Встречаемся у набережной',
   },
   {
     id: 'date-tuesday',
-    label: 'Вторник, 30 июля · 20:00',
+    weekday: 2,
+    hours: 20,
+    minutes: 0,
     description: 'Вечерняя прогулка по центру',
   },
 ]
+
+const BUILDER_PREVIEW_DATE_FORMATTER = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'long',
+  weekday: 'long',
+})
+
+function getNextPreviewDate(
+  referenceTime: Date,
+  definition: BuilderPreviewDateDefinition,
+): Date {
+  const candidate = new Date(referenceTime)
+  candidate.setHours(definition.hours, definition.minutes, 0, 0)
+
+  let daysUntilTarget = (definition.weekday - candidate.getDay() + 7) % 7
+  if (daysUntilTarget === 0 && candidate.getTime() <= referenceTime.getTime()) {
+    daysUntilTarget = 7
+  }
+
+  candidate.setDate(candidate.getDate() + daysUntilTarget)
+
+  return candidate
+}
+
+function capitalizePreviewDateLabel(value: string): string {
+  return value.charAt(0).toLocaleUpperCase('ru-RU') + value.slice(1)
+}
+
+export function buildBuilderPreviewDemoDateOptions(
+  referenceTime: Date,
+): BuilderPreviewDemoOption[] {
+  return BUILDER_PREVIEW_DATE_DEFINITIONS
+    .map((definition) => {
+      const startsAt = getNextPreviewDate(referenceTime, definition)
+      const dateLabel = capitalizePreviewDateLabel(
+        BUILDER_PREVIEW_DATE_FORMATTER.format(startsAt),
+      )
+      const timeLabel = `${String(definition.hours).padStart(2, '0')}:${String(definition.minutes).padStart(2, '0')}`
+
+      return {
+        startsAt,
+        option: {
+          id: definition.id,
+          label: `${dateLabel} · ${timeLabel}`,
+          description: definition.description,
+        },
+      }
+    })
+    .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime())
+    .map(item => item.option)
+}
 
 export const BUILDER_PREVIEW_ACTIVITIES: readonly BuilderPreviewDemoOption[] = [
   {
