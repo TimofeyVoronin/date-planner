@@ -121,7 +121,7 @@ describe('DPL-403 public and management integration', () => {
     )
 
     expect(page).toContain('<ActivityOptionSelector')
-    expect(page).toContain("selectionSaveState === 'saved'")
+    expect(page).toContain(':save-state="activitySelectionSaveState"')
     expect(page).toContain('api.saveActivitySelection(invitationId.value')
     expect(page).toContain(':options="invitation.activity_options"')
     expect(api).toContain('/activity-selection/')

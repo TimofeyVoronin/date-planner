@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import ActivityOptionSelector from '../../../components/activities/ActivityOptionSelector.vue'
 import InvitationPreviewCard from '../../../components/invitation/InvitationPreviewCard.vue'
+import PublicDeclinedCard from '../../../components/invitation/PublicDeclinedCard.vue'
+import PublicFlowProgress from '../../../components/invitation/PublicFlowProgress.vue'
+import PublicResumeNotice from '../../../components/invitation/PublicResumeNotice.vue'
+import PublicWaitingCard from '../../../components/invitation/PublicWaitingCard.vue'
 import FinalPlanCard from '../../../components/planning/FinalPlanCard.vue'
 import PlanOptionSelector from '../../../components/planning/PlanOptionSelector.vue'
 import { useInvitationsApi } from '../../../composables/useInvitationsApi'
@@ -23,6 +27,16 @@ import {
   parseInvitationResponseApiError,
   refreshInvitationResponseAfterConflict,
 } from '../../../utils/invitations'
+import {
+  canChangeDeclinedInvitationResponse,
+  getPublicFlowTransitionKey,
+  getPublicInvitationStage,
+  getPublicResumeNotice,
+  isPublicResponseStage,
+  shouldRefreshPublicSnapshotOnResume,
+  type PublicInvitationStage,
+  type PublicResumeNotice as PublicResumeNoticeData,
+} from '../../../utils/publicFlow'
 import { getInvitationScreenByType } from '../../../utils/screens'
 import {
   findUsableSelectedPlanOption,
@@ -36,6 +50,7 @@ type PageState = 'error' | 'loading' | 'ready'
 type ResponseSaveState = 'error' | 'idle' | 'saved' | 'saving'
 type SelectionSaveState = 'error' | 'idle' | 'saved' | 'saving'
 type ActivitySelectionSaveState = 'error' | 'idle' | 'saved' | 'saving'
+type WaitingRefreshState = 'error' | 'idle' | 'loading'
 
 const route = useRoute()
 const api = useInvitationsApi()
@@ -53,10 +68,18 @@ const selectionSaveError = ref('')
 const selectedActivityOptionId = ref<string | null>(null)
 const activitySelectionSaveState = ref<ActivitySelectionSaveState>('idle')
 const activitySelectionSaveError = ref('')
+const waitingRefreshState = ref<WaitingRefreshState>('idle')
+const waitingRefreshError = ref('')
+const showAcceptanceTransition = ref(false)
 const announceFinalPlan = ref(false)
 const announceFinalPlanOnNextSnapshot = ref(false)
+const resumeNotice = ref<PublicResumeNoticeData | null>(null)
+const resumeRefreshError = ref('')
+const stagePanelRef = ref<HTMLElement | null>(null)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const { currentTime, refreshCurrentTime, synchronizeServerTime } = useExpiryClock()
+let lastSnapshotReceivedAt: number | null = null
+let resumeRefreshInFlight = false
 const invitationScreen = computed(() => (
   getInvitationScreenByType(invitation.value?.screens ?? [], 'invitation')
 ))
@@ -69,8 +92,66 @@ const dateSelectionScreen = computed(() => (
 const activitySelectionScreen = computed(() => (
   getInvitationScreenByType(invitation.value?.screens ?? [], 'activity_selection')
 ))
-const planningSectionRef = ref<HTMLElement | null>(null)
-const activitySectionRef = ref<HTMLElement | null>(null)
+const hasActivityOptions = computed(() => (invitation.value?.activity_options.length ?? 0) > 0)
+const serverStage = computed<PublicInvitationStage>(() => (
+  invitation.value
+    ? getPublicInvitationStage(invitation.value, currentTime.value)
+    : 'invitation'
+))
+const activeStage = computed<PublicInvitationStage>(() => {
+  if (
+    showAcceptanceTransition.value
+    && serverStage.value !== 'declined'
+    && serverStage.value !== 'final'
+  ) {
+    return 'acceptance'
+  }
+
+  return serverStage.value
+})
+const stageTransitionKey = computed(() => getPublicFlowTransitionKey(activeStage.value))
+const responseStage = computed(() => isPublicResponseStage(activeStage.value))
+const canChangeDeclinedResponse = computed(() => (
+  invitation.value ? canChangeDeclinedInvitationResponse(invitation.value) : false
+))
+const showResponseSaveStatus = computed(() => (
+  responseStage.value
+  || (
+    activeStage.value === 'declined'
+    && (savedDuringThisVisit.value || responseSaveState.value !== 'saved')
+  )
+))
+const selectedPlanOption = computed(() => (
+  findUsableSelectedPlanOption(
+    invitation.value?.plan_options ?? [],
+    invitation.value?.selected_option_id ?? null,
+    currentTime.value,
+  )
+))
+const selectedActivityOption = computed(() => (
+  findSelectedActivityOption(
+    invitation.value?.activity_options ?? [],
+    invitation.value?.selected_activity_option_id ?? null,
+  )
+))
+const continueDisabled = computed(() => (
+  responseSaveState.value !== 'saved'
+  || invitation.value?.response_status !== 'accepted'
+))
+const hasUnsavedPublicChoice = computed(() => (
+  responseSaveState.value === 'saving'
+  || selectionSaveState.value === 'saving'
+  || activitySelectionSaveState.value === 'saving'
+  || (
+    activeStage.value === 'date_selection'
+    && selectedOptionId.value !== (invitation.value?.selected_option_id ?? null)
+  )
+  || (
+    activeStage.value === 'activity_selection'
+    && selectedActivityOptionId.value
+      !== (invitation.value?.selected_activity_option_id ?? null)
+  )
+))
 
 useHead({
   title: 'Личное приглашение — Date Planner',
@@ -121,16 +202,30 @@ function applyPublicInvitationSnapshot(
   nextInvitation: InvitationRecord,
   announceNewFinalPlan = false,
 ): void {
-  const shouldAnnounceNewFinalPlan = announceNewFinalPlan
+  const shouldAnnounceFinalPlan = announceNewFinalPlan
     || announceFinalPlanOnNextSnapshot.value
 
-  applyPublicInvitationRecord(nextInvitation, shouldAnnounceNewFinalPlan)
+  applyPublicInvitationRecord(nextInvitation, shouldAnnounceFinalPlan)
   responseSaveState.value = isFinalInvitationResponseStatus(nextInvitation.response_status)
     ? 'saved'
     : 'idle'
   pendingResponse.value = null
   savedDuringThisVisit.value = false
+  showAcceptanceTransition.value = false
   announceFinalPlanOnNextSnapshot.value = false
+}
+
+function markSnapshotReceived(): void {
+  lastSnapshotReceivedAt = Date.now()
+  resumeRefreshError.value = ''
+}
+
+function clearResumeNotice(): void {
+  resumeNotice.value = null
+}
+
+function focusActiveStage(): void {
+  void nextTick(() => stagePanelRef.value?.focus({ preventScroll: true }))
 }
 
 function showPublicSnapshotRefreshFailure(error: unknown): void {
@@ -159,6 +254,8 @@ async function loadInvitation(): Promise<void> {
     const nextInvitation = await api.getPublicInvitation(invitationId.value)
 
     applyPublicInvitationSnapshot(nextInvitation)
+    resumeNotice.value = getPublicResumeNotice(nextInvitation, currentTime.value)
+    markSnapshotReceived()
     pageState.value = 'ready'
   }
   catch (error: unknown) {
@@ -175,9 +272,11 @@ async function saveResponse(status: FinalInvitationResponseStatus): Promise<void
     return
   }
 
+  clearResumeNotice()
   pendingResponse.value = status
   responseSaveError.value = ''
   responseSaveState.value = 'saving'
+  showAcceptanceTransition.value = status === 'accepted' && Boolean(acceptanceScreen.value)
 
   try {
     const nextInvitation = await api.saveInvitationResponse(invitationId.value, {
@@ -185,8 +284,13 @@ async function saveResponse(status: FinalInvitationResponseStatus): Promise<void
     })
 
     applyPublicInvitationRecord(nextInvitation, true)
+    markSnapshotReceived()
     savedDuringThisVisit.value = true
     responseSaveState.value = 'saved'
+
+    if (status === 'declined') {
+      showAcceptanceTransition.value = false
+    }
   }
   catch (error: unknown) {
     const parsedError = parseInvitationResponseApiError(error)
@@ -215,11 +319,10 @@ async function saveResponse(status: FinalInvitationResponseStatus): Promise<void
 }
 
 function choosePlanOption(optionId: string): void {
-  const now = refreshCurrentTime()
   const selectedOption = findUsableSelectedPlanOption(
     invitation.value?.plan_options ?? [],
     optionId,
-    now,
+    refreshCurrentTime(),
   )
 
   if (!selectedOption) {
@@ -254,6 +357,7 @@ async function savePlanSelection(): Promise<void> {
     return
   }
 
+  clearResumeNotice()
   selectionSaveState.value = 'saving'
   selectionSaveError.value = ''
 
@@ -263,7 +367,8 @@ async function savePlanSelection(): Promise<void> {
     })
 
     applyPublicInvitationRecord(nextInvitation, true)
-    scrollToActivitySelection()
+    markSnapshotReceived()
+    focusActiveStage()
   }
   catch (error: unknown) {
     const parsedError = parsePlanningApiError(error, 'selection')
@@ -276,6 +381,7 @@ async function savePlanSelection(): Promise<void> {
 
       if (nextInvitation) {
         applyPublicInvitationSnapshot(nextInvitation, true)
+        focusActiveStage()
         return
       }
     }
@@ -327,6 +433,7 @@ async function saveActivitySelection(): Promise<void> {
     return
   }
 
+  clearResumeNotice()
   activitySelectionSaveState.value = 'saving'
   activitySelectionSaveError.value = ''
 
@@ -336,6 +443,8 @@ async function saveActivitySelection(): Promise<void> {
     })
 
     applyPublicInvitationRecord(nextInvitation, true)
+    markSnapshotReceived()
+    focusActiveStage()
   }
   catch (error: unknown) {
     const parsedError = parseActivitySelectionApiError(error)
@@ -348,6 +457,7 @@ async function saveActivitySelection(): Promise<void> {
 
       if (nextInvitation) {
         applyPublicInvitationSnapshot(nextInvitation, true)
+        focusActiveStage()
         return
       }
     }
@@ -363,20 +473,73 @@ async function saveActivitySelection(): Promise<void> {
   }
 }
 
-function scrollToActivitySelection(): void {
-  void nextTick(() => {
-    const target = activitySectionRef.value
-    if (!target) {
-      return
-    }
+async function refreshWaitingStatus(): Promise<void> {
+  if (waitingRefreshState.value === 'loading') {
+    return
+  }
 
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    target.scrollIntoView({
-      behavior: reducedMotion ? 'auto' : 'smooth',
-      block: 'start',
-    })
-    target.focus({ preventScroll: true })
-  })
+  waitingRefreshState.value = 'loading'
+  waitingRefreshError.value = ''
+
+  try {
+    const nextInvitation = await api.getPublicInvitation(invitationId.value)
+
+    applyPublicInvitationSnapshot(nextInvitation, true)
+    markSnapshotReceived()
+    waitingRefreshState.value = 'idle'
+    focusActiveStage()
+  }
+  catch (error: unknown) {
+    const parsedError = parseInvitationApiError(error)
+
+    waitingRefreshError.value = parsedError.message
+    waitingRefreshState.value = 'error'
+  }
+}
+
+async function refreshPublicSnapshotOnResume(force = false): Promise<void> {
+  if (
+    pageState.value !== 'ready'
+    || resumeRefreshInFlight
+    || (!force && hasUnsavedPublicChoice.value)
+    || (!force && !shouldRefreshPublicSnapshotOnResume(lastSnapshotReceivedAt))
+  ) {
+    return
+  }
+
+  resumeRefreshInFlight = true
+
+  try {
+    const previousStage = serverStage.value
+    const nextInvitation = await api.getPublicInvitation(invitationId.value)
+
+    applyPublicInvitationSnapshot(nextInvitation, true)
+    markSnapshotReceived()
+
+    if (previousStage !== serverStage.value) {
+      resumeNotice.value = getPublicResumeNotice(nextInvitation, currentTime.value)
+      focusActiveStage()
+    }
+  }
+  catch (error: unknown) {
+    resumeRefreshError.value = parseInvitationApiError(error).message
+  }
+  finally {
+    resumeRefreshInFlight = false
+  }
+}
+
+function refreshWhenPageBecomesVisible(): void {
+  refreshCurrentTime()
+
+  if (document.visibilityState === 'visible') {
+    void refreshPublicSnapshotOnResume()
+  }
+}
+
+function refreshWhenWindowFocuses(): void {
+  refreshCurrentTime()
+  void refreshPublicSnapshotOnResume()
 }
 
 function retryResponseSave(): void {
@@ -386,22 +549,37 @@ function retryResponseSave(): void {
 }
 
 function continueToPlanning(): void {
-  void nextTick(() => {
-    const target = planningSectionRef.value
-    if (!target) {
-      return
-    }
+  if (continueDisabled.value) {
+    return
+  }
 
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    target.scrollIntoView({
-      behavior: reducedMotion ? 'auto' : 'smooth',
-      block: 'start',
-    })
-    target.focus({ preventScroll: true })
-  })
+  showAcceptanceTransition.value = false
+  focusActiveStage()
 }
 
-onMounted(loadInvitation)
+watch(serverStage, (nextStage, previousStage) => {
+  if (
+    pageState.value === 'ready'
+    && nextStage === 'date_selection'
+    && (previousStage === 'activity_selection' || previousStage === 'awaiting_confirmation')
+    && invitation.value
+  ) {
+    applyPersistedPlanSelection(invitation.value)
+    resumeNotice.value = getPublicResumeNotice(invitation.value, currentTime.value)
+    focusActiveStage()
+  }
+})
+
+onMounted(() => {
+  void loadInvitation()
+  document.addEventListener('visibilitychange', refreshWhenPageBecomesVisible)
+  window.addEventListener('focus', refreshWhenWindowFocuses)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', refreshWhenPageBecomesVisible)
+  window.removeEventListener('focus', refreshWhenWindowFocuses)
+})
 </script>
 
 <template>
@@ -440,67 +618,58 @@ onMounted(loadInvitation)
           <p>Тебе пришло личное приглашение</p>
           <h1 id="invite-page-title">{{ invitation.recipient_name }}, это для тебя</h1>
         </header>
-        <InvitationPreviewCard
-          :acceptance-screen="acceptanceScreen"
-          :allow-reset="false"
-          :author-name="invitation.author_name"
-          :initial-status="invitation.response_status"
-          :message="invitation.message"
-          :planning-context="true"
-          :recipient-name="invitation.recipient_name"
-          :screen="invitationScreen"
-          @answered="saveResponse"
-          @continue="continueToPlanning"
+
+        <PublicResumeNotice
+          v-if="resumeNotice"
+          :notice="resumeNotice"
+          @dismiss="clearResumeNotice"
         />
-        <div
-          ref="planningSectionRef"
-          class="public-invitation-followup"
-          tabindex="-1"
-        >
+
+        <div v-if="resumeRefreshError" class="public-resume-refresh-error" role="alert">
+          <span>{{ resumeRefreshError }}</span>
+          <button type="button" @click="refreshPublicSnapshotOnResume(true)">
+            Обновить состояние
+          </button>
+        </div>
+
+        <PublicFlowProgress
+          :has-activity-options="hasActivityOptions"
+          :stage="activeStage"
+        />
+
+        <Transition name="public-flow-stage" mode="out-in">
           <div
-            v-if="responseSaveState !== 'idle'"
-            class="response-save-status"
-            :class="`response-save-status--${responseSaveState}`"
-            :role="responseSaveState === 'error' ? 'alert' : 'status'"
-            aria-live="polite"
+            :key="stageTransitionKey"
+            ref="stagePanelRef"
+            class="public-flow-stage"
+            tabindex="-1"
           >
-            <span class="response-save-status__icon" aria-hidden="true">
-              {{ responseSaveState === 'saving' ? '⏳' : responseSaveState === 'saved' ? '✓' : '!' }}
-            </span>
-            <div>
-              <strong v-if="responseSaveState === 'saving'">Сохраняем твой ответ…</strong>
-              <strong v-else-if="responseSaveState === 'saved'">
-                {{ savedDuringThisVisit ? 'Ответ сохранён' : 'Ответ уже сохранён' }}
-              </strong>
-              <strong v-else>Не удалось сохранить ответ</strong>
-              <p v-if="responseSaveState === 'saving'">Не закрывай страницу ещё мгновение.</p>
-              <p v-else-if="responseSaveState === 'saved'">
-                Автор приглашения увидит его на своей секретной странице.
-              </p>
-              <p v-else>{{ responseSaveError }}</p>
-            </div>
-            <button
-              v-if="responseSaveState === 'error'"
-              type="button"
-              @click="retryResponseSave"
-            >
-              Повторить
-            </button>
-          </div>
-
-          <template v-if="invitation.confirmed_at">
-            <FinalPlanCard
-              v-if="invitation.confirmed_plan"
-              :announce="announceFinalPlan"
-              :plan="invitation.confirmed_plan"
+            <InvitationPreviewCard
+              v-if="responseStage"
+              :acceptance-screen="acceptanceScreen"
+              :allow-reset="false"
+              :author-name="invitation.author_name"
+              :continue-disabled="continueDisabled"
+              :direct-decline="true"
+              :initial-status="invitation.response_status"
+              :message="invitation.message"
+              :planning-context="true"
+              :recipient-name="invitation.recipient_name"
+              :screen="invitationScreen"
+              @answered="saveResponse"
+              @continue="continueToPlanning"
             />
-            <section v-else class="plan-data-error" role="alert">
-              Итоговый план не удалось загрузить. Обнови страницу и попробуй снова.
-            </section>
-          </template>
 
-          <template v-else-if="invitation.response_status === 'accepted'">
+            <PublicDeclinedCard
+              v-else-if="activeStage === 'declined'"
+              :can-change-decision="canChangeDeclinedResponse"
+              :is-saving="responseSaveState === 'saving'"
+              :recipient-name="invitation.recipient_name"
+              @accept="saveResponse('accepted')"
+            />
+
             <PlanOptionSelector
+              v-else-if="activeStage === 'date_selection'"
               :current-time="currentTime"
               :model-value="selectedOptionId"
               :options="invitation.plan_options"
@@ -511,29 +680,80 @@ onMounted(loadInvitation)
               @save="savePlanSelection"
               @update:model-value="choosePlanOption"
             />
-            <div
-              v-if="selectedOptionId && selectionSaveState === 'saved'"
-              ref="activitySectionRef"
-              class="public-activity-selection"
-              tabindex="-1"
-            >
-              <ActivityOptionSelector
-                :model-value="selectedActivityOptionId"
-                :options="invitation.activity_options"
-                :persisted-option-id="invitation.selected_activity_option_id"
-                :save-error="activitySelectionSaveError"
-                :save-state="activitySelectionSaveState"
-                :screen="activitySelectionScreen"
-                @save="saveActivitySelection"
-                @update:model-value="chooseActivityOption"
+
+            <ActivityOptionSelector
+              v-else-if="activeStage === 'activity_selection'"
+              :model-value="selectedActivityOptionId"
+              :options="invitation.activity_options"
+              :persisted-option-id="invitation.selected_activity_option_id"
+              :save-error="activitySelectionSaveError"
+              :save-state="activitySelectionSaveState"
+              :screen="activitySelectionScreen"
+              @save="saveActivitySelection"
+              @update:model-value="chooseActivityOption"
+            />
+
+            <PublicWaitingCard
+              v-else-if="activeStage === 'awaiting_confirmation' && selectedPlanOption"
+              :activity="selectedActivityOption"
+              :option="selectedPlanOption"
+              :refresh-error="waitingRefreshError"
+              :refresh-state="waitingRefreshState"
+              @refresh="refreshWaitingStatus"
+            />
+
+            <template v-else-if="activeStage === 'final'">
+              <FinalPlanCard
+                v-if="invitation.confirmed_plan"
+                :announce="announceFinalPlan"
+                :plan="invitation.confirmed_plan"
               />
+              <section v-else class="plan-data-error" role="alert">
+                Итоговый план не удалось загрузить. Обнови страницу и попробуй снова.
+              </section>
+            </template>
+
+            <section v-else class="plan-data-error" role="alert">
+              Текущее состояние приглашения не удалось показать. Обнови страницу и попробуй снова.
+            </section>
+
+            <div
+              v-if="showResponseSaveStatus && responseSaveState !== 'idle'"
+              class="response-save-status"
+              :class="`response-save-status--${responseSaveState}`"
+              :role="responseSaveState === 'error' ? 'alert' : 'status'"
+              aria-live="polite"
+            >
+              <span class="response-save-status__icon" aria-hidden="true">
+                {{ responseSaveState === 'saving' ? '⏳' : responseSaveState === 'saved' ? '✓' : '!' }}
+              </span>
+              <div>
+                <strong v-if="responseSaveState === 'saving'">Сохраняем твой ответ…</strong>
+                <strong v-else-if="responseSaveState === 'saved'">
+                  {{ savedDuringThisVisit ? 'Ответ сохранён' : 'Ответ уже сохранён' }}
+                </strong>
+                <strong v-else>Не удалось сохранить ответ</strong>
+                <p v-if="responseSaveState === 'saving'">Не закрывай страницу ещё мгновение.</p>
+                <p v-else-if="responseSaveState === 'saved'">
+                  Автор приглашения увидит его на своей секретной странице.
+                </p>
+                <p v-else>{{ responseSaveError }}</p>
+              </div>
+              <button
+                v-if="responseSaveState === 'error'"
+                type="button"
+                @click="retryResponseSave"
+              >
+                Повторить
+              </button>
             </div>
-          </template>
-          <p class="detail-shell__privacy">
-            <span aria-hidden="true">🔒</span>
-            Страница доступна только тем, у кого есть ссылка.
-          </p>
-        </div>
+          </div>
+        </Transition>
+
+        <p class="detail-shell__privacy">
+          <span aria-hidden="true">🔒</span>
+          Страница доступна только тем, у кого есть ссылка.
+        </p>
       </template>
     </section>
   </main>

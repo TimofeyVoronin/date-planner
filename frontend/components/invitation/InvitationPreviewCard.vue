@@ -19,6 +19,8 @@ type Props = {
   message?: string
   planningContext?: boolean
   previewOnly?: boolean
+  continueDisabled?: boolean
+  directDecline?: boolean
   recipientName?: string
   screen?: InvitationScreenEditForm | null
 }
@@ -31,6 +33,8 @@ const props = withDefaults(defineProps<Props>(), {
   message: '',
   planningContext: false,
   previewOnly: false,
+  continueDisabled: false,
+  directDecline: false,
   recipientName: '',
   screen: null,
 })
@@ -69,6 +73,15 @@ const acceptanceSubtitle = computed(() => props.acceptanceScreen?.subtitle.trim(
 const acceptanceButtonText = computed(() => (
   props.acceptanceScreen?.button_text.trim() || 'Продолжить'
 ))
+const acceptanceFallbackCopy = computed(() => {
+  if (!props.planningContext) {
+    return 'Похоже, впереди прекрасная встреча.'
+  }
+
+  return props.acceptanceScreen
+    ? 'Нажми «Продолжить», чтобы перейти к выбору даты и активности.'
+    : 'Сохраняем ответ и открываем следующий этап планирования.'
+})
 
 const {
   attempts,
@@ -93,9 +106,12 @@ function chooseAnswer(status: FinalInvitationResponseStatus): void {
     return
   }
 
-  answer.value = status
+  if (!(props.directDecline && status === 'declined')) {
+    answer.value = status
+    focusResult()
+  }
+
   emit('answered', status)
-  focusResult()
 }
 
 function acceptInvitation(): void {
@@ -107,7 +123,7 @@ function declineInvitation(): void {
 }
 
 function continuePlanning(): void {
-  if (props.previewOnly) {
+  if (props.previewOnly || props.continueDisabled) {
     return
   }
 
@@ -115,7 +131,7 @@ function continuePlanning(): void {
 }
 
 function handleNoPointerEnter(event: PointerEvent): void {
-  if (props.previewOnly) {
+  if (props.previewOnly || props.directDecline) {
     return
   }
 
@@ -138,6 +154,11 @@ function offerSecondChanceOrDecline(): void {
 function handleNoClick(event: MouseEvent): void {
   if (props.previewOnly) {
     event.preventDefault()
+    return
+  }
+
+  if (props.directDecline) {
+    declineInvitation()
     return
   }
 
@@ -276,7 +297,7 @@ watch(
             : secondChance
               ? `${noButtonText}, всё же отклонить приглашение`
               : `${noButtonText}, отклонить приглашение`"
-          :aria-describedby="previewOnly ? undefined : runawayHelpId"
+          :aria-describedby="previewOnly || directDecline ? undefined : runawayHelpId"
           :style="noButtonStyle"
           @pointerenter="handleNoPointerEnter"
           @click="handleNoClick"
@@ -284,11 +305,11 @@ watch(
           {{ noButtonText }}
         </button>
 
-        <p v-if="!previewOnly" :id="runawayHelpId" class="sr-only">
+        <p v-if="!previewOnly && !directDecline" :id="runawayHelpId" class="sr-only">
           Для мыши и сенсорного экрана кнопка может переместиться до пяти раз.
           После пятой попытки появится повторный вопрос. С клавиатуры ответ доступен сразу.
         </p>
-        <p v-if="!previewOnly" class="sr-only" aria-live="polite">
+        <p v-if="!previewOnly && !directDecline" class="sr-only" aria-live="polite">
           Попыток перемещения: {{ attempts }} из {{ RUNAWAY_ATTEMPT_LIMIT }}.
         </p>
       </div>
@@ -313,10 +334,7 @@ watch(
       </h2>
       <p class="invitation-card__result-copy">
         {{ answer === 'accepted'
-          ? acceptanceSubtitle
-            || (props.planningContext
-              ? 'Продолжение ниже: выбери вариант или посмотри уже подтверждённый план.'
-              : 'Похоже, впереди прекрасная встреча.')
+          ? acceptanceSubtitle || acceptanceFallbackCopy
           : 'Спланируем в другой раз 😉' }}
       </p>
       <button
@@ -327,6 +345,7 @@ watch(
         :aria-label="previewOnly
           ? `Предпросмотр кнопки: ${acceptanceButtonText}`
           : acceptanceButtonText"
+        :disabled="props.continueDisabled"
         @click="continuePlanning"
       >
         {{ acceptanceButtonText }}

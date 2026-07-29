@@ -1138,6 +1138,7 @@ onUnmounted(() => {
               :activity-options="previewActivityOptions"
               :author-name="autosave.form.author_name"
               :builder-step="currentStep"
+              :current-time="currentTime"
               :date-options="previewDateOptions"
               :message="autosave.form.message"
               :recipient-name="autosave.form.recipient_name"
