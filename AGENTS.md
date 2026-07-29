@@ -26,6 +26,7 @@ These rules apply to the entire repository.
 - Store the IANA time-zone name with every planning option and format shared final data in that saved zone rather than whichever browser happens to render the page.
 - Treat `ConfirmedPlan` as an immutable display snapshot created exactly once inside the confirmation transaction. Public and management final cards must read that snapshot, not mutable invitation names, screen rows, or option rows; exact confirmation retries must return the original snapshot without changing timestamps.
 - Drive the public recipient page as one explicit stage derived from the latest server snapshot: invitation, date selection, activity selection, waiting for the author, or final plan. Render only one main stage at a time; the acceptance screen may be a short local transition after a successful response, but a reload must resume from persisted server state.
+- Keep the real recipient decline action direct and pressure-free. The playful runaway-button behavior may remain in builder preview only; a persisted decline must render a separate neutral stage, allow one explicit change to acceptance only before final confirmation, and never expose a decline control after a confirmed plan exists.
 - Preserve idempotent lifecycle transitions and their original timestamps when requests are retried.
 - Prefer the smallest clear implementation. Do not introduce infrastructure or abstraction before it is needed.
 
