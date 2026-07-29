@@ -52,4 +52,25 @@ describe('DPL-701 publication success flow', () => {
     expect(component).toContain('@click="copyManagementLink"')
     expect(component).not.toContain('Скопировать обе ссылки')
   })
+
+  it('offers native, Telegram, WhatsApp, and manual-copy delivery paths', () => {
+    const component = readFileSync(
+      new URL('../components/invitation/InvitationPublicationSuccess.vue', import.meta.url),
+      'utf8',
+    )
+
+    expect(component).toContain('buildInvitationSharePayload(')
+    expect(component).toContain('props.publicUrl')
+    expect(component).toContain('shareInvitationNatively(')
+    expect(component).toContain('v-if="nativeShareSupported"')
+    expect(component).toContain(':href="telegramShareUrl"')
+    expect(component).toContain(':href="whatsAppShareUrl"')
+    expect(component).toContain('target="_blank"')
+    expect(component).toContain('rel="noopener noreferrer"')
+    expect(component).toContain('@click="copyPublicLink"')
+    expect(component).toContain('ручным запасным вариантом')
+    expect(component).toMatch(
+      /buildInvitationSharePayload\(\s*props\.authorName,\s*props\.recipientName,\s*props\.publicUrl,/,
+    )
+  })
 })
