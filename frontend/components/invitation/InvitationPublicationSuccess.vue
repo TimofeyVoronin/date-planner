@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { copyTextWithFallback } from '../../composables/useClipboard'
+import {
+  buildInvitationSharePayload,
+  buildTelegramShareUrl,
+  buildWhatsAppShareUrl,
+  shareInvitationNatively,
+  supportsNativeShare,
+} from '../../utils/sharing'
 
 type CopyState = 'copied' | 'failed' | 'idle'
+type NativeShareState = 'failed' | 'idle' | 'sharing'
 
 const props = defineProps<{
   authorName: string
@@ -13,7 +21,16 @@ const props = defineProps<{
 
 const publicCopyState = ref<CopyState>('idle')
 const managementCopyState = ref<CopyState>('idle')
+const nativeShareState = ref<NativeShareState>('idle')
+const nativeShareSupported = ref(false)
 const managementLinkRevealed = ref(false)
+const sharePayload = computed(() => buildInvitationSharePayload(
+  props.authorName,
+  props.recipientName,
+  props.publicUrl,
+))
+const telegramShareUrl = computed(() => buildTelegramShareUrl(sharePayload.value))
+const whatsAppShareUrl = computed(() => buildWhatsAppShareUrl(sharePayload.value))
 
 async function copyPublicLink(): Promise<void> {
   publicCopyState.value = await copyTextWithFallback(props.publicUrl)
@@ -27,9 +44,30 @@ async function copyManagementLink(): Promise<void> {
     : 'failed'
 }
 
+async function shareFromDevice(): Promise<void> {
+  if (nativeShareState.value === 'sharing') {
+    return
+  }
+
+  nativeShareState.value = 'sharing'
+
+  const outcome = await shareInvitationNatively(
+    sharePayload.value,
+    typeof navigator === 'undefined' ? undefined : navigator,
+  )
+
+  nativeShareState.value = outcome === 'failed' || outcome === 'unsupported'
+    ? 'failed'
+    : 'idle'
+}
+
 function revealManagementLink(event: Event): void {
   managementLinkRevealed.value = (event.currentTarget as HTMLDetailsElement).open
 }
+
+onMounted(() => {
+  nativeShareSupported.value = supportsNativeShare(navigator)
+})
 </script>
 
 <template>
@@ -86,6 +124,65 @@ function revealManagementLink(event: Event): void {
         >
           Не удалось скопировать автоматически — выдели ссылку вручную.
         </span>
+      </div>
+
+      <div
+        class="publication-success__sharing"
+        aria-labelledby="publication-sharing-title"
+      >
+        <div class="publication-success__sharing-heading">
+          <div>
+            <p>Выбери удобный способ</p>
+            <h3 id="publication-sharing-title">Отправить приглашение</h3>
+          </div>
+          <span aria-hidden="true">↗</span>
+        </div>
+
+        <div class="publication-success__share-actions">
+          <button
+            v-if="nativeShareSupported"
+            class="publication-success__share-action publication-success__share-action--native"
+            type="button"
+            :disabled="nativeShareState === 'sharing'"
+            @click="shareFromDevice"
+          >
+            <span aria-hidden="true">📤</span>
+            {{ nativeShareState === 'sharing' ? 'Открываем…' : 'Поделиться' }}
+          </button>
+
+          <a
+            class="publication-success__share-action publication-success__share-action--telegram"
+            :href="telegramShareUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span aria-hidden="true">✈</span>
+            Telegram
+          </a>
+
+          <a
+            class="publication-success__share-action publication-success__share-action--whatsapp"
+            :href="whatsAppShareUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span aria-hidden="true">💬</span>
+            WhatsApp
+          </a>
+        </div>
+
+        <p class="publication-success__sharing-hint">
+          В сервис откроется готовый текст только с публичной ссылкой. Перед отправкой его можно
+          изменить. Поле со ссылкой выше всегда остаётся ручным запасным вариантом.
+        </p>
+
+        <p
+          v-if="nativeShareState === 'failed'"
+          class="publication-success__sharing-error"
+          role="status"
+        >
+          Системное меню отправки не открылось. Используй Telegram, WhatsApp или скопируй ссылку.
+        </p>
       </div>
 
       <p class="publication-success__public-note">

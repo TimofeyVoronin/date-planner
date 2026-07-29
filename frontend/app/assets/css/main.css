@@ -3398,6 +3398,126 @@ button {
   line-height: 1.55;
 }
 
+.publication-success__sharing {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid #f1e4e9;
+}
+
+.publication-success__sharing-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.publication-success__sharing-heading p,
+.publication-success__sharing-heading h3 {
+  margin: 0;
+}
+
+.publication-success__sharing-heading p {
+  color: #a15c75;
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.publication-success__sharing-heading h3 {
+  margin-top: 3px;
+  color: #4a2939;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  font-size: 1.16rem;
+}
+
+.publication-success__sharing-heading > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #9f3f61;
+  border-radius: 50%;
+  background: #fff1f6;
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.publication-success__share-actions {
+  display: grid;
+  margin-top: 15px;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.publication-success__share-action {
+  display: inline-flex;
+  min-height: 46px;
+  padding: 10px 14px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #513342;
+  border: 1px solid #ead7df;
+  border-radius: 14px;
+  background: #fff;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 850;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+
+.publication-success__share-action:hover:not(:disabled) {
+  border-color: #dcaec0;
+  box-shadow: 0 9px 20px rgb(112 51 76 / 10%);
+  transform: translateY(-1px);
+}
+
+.publication-success__share-action:focus-visible {
+  outline: 4px solid rgb(185 69 105 / 22%);
+  outline-offset: 3px;
+}
+
+.publication-success__share-action:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
+.publication-success__share-action--native {
+  color: #8f3556;
+  background: #fff5f8;
+}
+
+.publication-success__share-action--telegram {
+  color: #275f79;
+  background: #f1f9fd;
+}
+
+.publication-success__share-action--whatsapp {
+  color: #286949;
+  background: #f0faf5;
+}
+
+.publication-success__sharing-hint,
+.publication-success__sharing-error {
+  margin: 13px 0 0;
+  font-size: .74rem;
+  line-height: 1.5;
+}
+
+.publication-success__sharing-hint {
+  color: #806370;
+}
+
+.publication-success__sharing-error {
+  color: #9d3e52;
+  font-weight: 750;
+}
+
 .publication-success__public-note {
   display: flex;
   margin: 17px 0 0;
@@ -3492,6 +3612,10 @@ button {
 
   .publication-success__section-heading {
     align-items: flex-start;
+  }
+
+  .publication-success__share-actions {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .publication-success__manage-link {
