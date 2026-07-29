@@ -37,7 +37,7 @@ describe('builder interactive preview state', () => {
 
     expect(preview.activeScreen.value).toBe('acceptance')
     expect(preview.deviceId.value).toBe('large')
-    expect(preview.selectedDate.value.id).toBe('date-saturday')
+    expect(preview.selectedDateId.value).toBe('date-saturday')
   })
 
   it('resolves selected demonstration choices and falls back safely', () => {
@@ -72,7 +72,7 @@ describe('builder interactive preview state', () => {
     preview.reset()
 
     expect(preview.activeScreen.value).toBe('invitation')
-    expect(preview.selectedDate.value.id).toBe('date-friday')
+    expect(preview.selectedDateId.value).toBe('date-friday')
     expect(preview.selectedActivity.value.id).toBe('activity-walk')
     expect(preview.noButtonAttempts.value).toBe(0)
     expect(preview.deviceId.value).toBe('compact')

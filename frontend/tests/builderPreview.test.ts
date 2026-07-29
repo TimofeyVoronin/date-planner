@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   BUILDER_PREVIEW_ACTIVITIES,
-  BUILDER_PREVIEW_DATES,
+  buildBuilderPreviewDemoDateOptions,
   BUILDER_PREVIEW_DEVICES,
   BUILDER_PREVIEW_SCREEN_DEFINITIONS,
   buildBuilderPreviewActivityOptions,
@@ -143,13 +143,60 @@ describe('builder interactive preview definitions', () => {
     ])
   })
 
-  it('keeps demonstration choices stable and unique', () => {
-    const dateIds = BUILDER_PREVIEW_DATES.map(option => option.id)
+  it('builds future demonstration dates from synchronized server time', () => {
+    const options = buildBuilderPreviewDemoDateOptions(
+      new Date(2026, 6, 29, 23, 30),
+    )
+
+    expect(options).toEqual([
+      {
+        id: 'date-friday',
+        label: 'Пятница, 31 июля · 19:00',
+        description: 'Кофейня у парка',
+      },
+      {
+        id: 'date-saturday',
+        label: 'Суббота, 1 августа · 17:30',
+        description: 'Встречаемся у набережной',
+      },
+      {
+        id: 'date-tuesday',
+        label: 'Вторник, 4 августа · 20:00',
+        description: 'Вечерняя прогулка по центру',
+      },
+    ])
+    expect(new Set(options.map(option => option.id)).size).toBe(options.length)
+    expect(options.every(option => option.description.length > 0)).toBe(true)
+  })
+
+  it('moves a same-day demonstration slot to the following week after it passes', () => {
+    const options = buildBuilderPreviewDemoDateOptions(
+      new Date(2026, 7, 4, 20, 1),
+    )
+    const tuesday = options.find(option => option.id === 'date-tuesday')
+
+    expect(tuesday?.label).toBe('Вторник, 11 августа · 20:00')
+  })
+
+  it('feeds synchronized server time into demonstration date generation', () => {
+    const preview = readFileSync(
+      new URL('../components/builder/BuilderMobilePreview.vue', import.meta.url),
+      'utf8',
+    )
+    const builderPage = readFileSync(
+      new URL('../app/pages/manage/[id]/builder.vue', import.meta.url),
+      'utf8',
+    )
+
+    expect(preview).toContain('currentTime: Date')
+    expect(preview).toContain('buildBuilderPreviewDemoDateOptions(props.currentTime)')
+    expect(builderPage).toContain(':current-time="currentTime"')
+  })
+
+  it('keeps demonstration activity choices stable and unique', () => {
     const activityIds = BUILDER_PREVIEW_ACTIVITIES.map(option => option.id)
 
-    expect(new Set(dateIds).size).toBe(dateIds.length)
     expect(new Set(activityIds).size).toBe(activityIds.length)
-    expect(BUILDER_PREVIEW_DATES.every(option => option.description.length > 0)).toBe(true)
     expect(BUILDER_PREVIEW_ACTIVITIES.every(option => option.description.length > 0)).toBe(true)
   })
 })

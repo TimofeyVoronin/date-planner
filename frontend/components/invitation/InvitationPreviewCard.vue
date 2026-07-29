@@ -19,6 +19,7 @@ type Props = {
   message?: string
   planningContext?: boolean
   previewOnly?: boolean
+  continueDisabled?: boolean
   recipientName?: string
   screen?: InvitationScreenEditForm | null
 }
@@ -31,6 +32,7 @@ const props = withDefaults(defineProps<Props>(), {
   message: '',
   planningContext: false,
   previewOnly: false,
+  continueDisabled: false,
   recipientName: '',
   screen: null,
 })
@@ -69,6 +71,15 @@ const acceptanceSubtitle = computed(() => props.acceptanceScreen?.subtitle.trim(
 const acceptanceButtonText = computed(() => (
   props.acceptanceScreen?.button_text.trim() || 'Продолжить'
 ))
+const acceptanceFallbackCopy = computed(() => {
+  if (!props.planningContext) {
+    return 'Похоже, впереди прекрасная встреча.'
+  }
+
+  return props.acceptanceScreen
+    ? 'Нажми «Продолжить», чтобы перейти к выбору даты и активности.'
+    : 'Сохраняем ответ и открываем следующий этап планирования.'
+})
 
 const {
   attempts,
@@ -107,7 +118,7 @@ function declineInvitation(): void {
 }
 
 function continuePlanning(): void {
-  if (props.previewOnly) {
+  if (props.previewOnly || props.continueDisabled) {
     return
   }
 
@@ -313,10 +324,7 @@ watch(
       </h2>
       <p class="invitation-card__result-copy">
         {{ answer === 'accepted'
-          ? acceptanceSubtitle
-            || (props.planningContext
-              ? 'Продолжение ниже: выбери вариант или посмотри уже подтверждённый план.'
-              : 'Похоже, впереди прекрасная встреча.')
+          ? acceptanceSubtitle || acceptanceFallbackCopy
           : 'Спланируем в другой раз 😉' }}
       </p>
       <button
@@ -327,6 +335,7 @@ watch(
         :aria-label="previewOnly
           ? `Предпросмотр кнопки: ${acceptanceButtonText}`
           : acceptanceButtonText"
+        :disabled="props.continueDisabled"
         @click="continuePlanning"
       >
         {{ acceptanceButtonText }}
