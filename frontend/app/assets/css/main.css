@@ -5792,3 +5792,124 @@ button {
     border-radius: 23px;
   }
 }
+
+/* DPL-603: restored public state and non-disruptive resume refresh. */
+.public-resume-notice,
+.public-resume-refresh-error {
+  width: min(100%, 720px);
+  margin: 0 auto 16px;
+}
+
+.public-resume-notice {
+  display: grid;
+  padding: 14px 16px;
+  align-items: start;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  border: 1px solid rgb(99 68 84 / 12%);
+  border-radius: 18px;
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 10px 28px rgb(88 46 65 / 8%);
+}
+
+.public-resume-notice--success {
+  border-color: rgb(63 132 96 / 18%);
+  background: #f1faf5;
+}
+
+.public-resume-notice--warning {
+  border-color: rgb(190 126 45 / 22%);
+  background: #fff8e9;
+}
+
+.public-resume-notice__icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 75%);
+  font-size: 1.1rem;
+}
+
+.public-resume-notice strong,
+.public-resume-notice p {
+  margin: 0;
+}
+
+.public-resume-notice strong {
+  color: #4e2a3b;
+  font-size: .86rem;
+}
+
+.public-resume-notice p {
+  margin-top: 4px;
+  color: #765e6b;
+  font-size: .76rem;
+  line-height: 1.5;
+}
+
+.public-resume-notice > button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  cursor: pointer;
+  color: #876878;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.public-resume-notice > button:hover {
+  background: rgb(109 72 89 / 8%);
+}
+
+.public-resume-notice > button:focus-visible,
+.public-resume-refresh-error button:focus-visible {
+  outline: 3px solid rgb(197 73 116 / 24%);
+  outline-offset: 2px;
+}
+
+.public-resume-refresh-error {
+  display: flex;
+  padding: 11px 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #7f2f49;
+  border: 1px solid rgb(193 70 104 / 18%);
+  border-radius: 14px;
+  background: #fff1f4;
+  font-size: .76rem;
+  line-height: 1.45;
+}
+
+.public-resume-refresh-error button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 7px 12px;
+  cursor: pointer;
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  background: #8f3d5b;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+@media (max-width: 620px) {
+  .public-resume-notice {
+    padding: 12px;
+    gap: 10px;
+    border-radius: 16px;
+  }
+
+  .public-resume-refresh-error {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

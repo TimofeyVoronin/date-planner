@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import ActivityOptionSelector from '../../../components/activities/ActivityOptionSelector.vue'
 import InvitationPreviewCard from '../../../components/invitation/InvitationPreviewCard.vue'
 import PublicDeclinedCard from '../../../components/invitation/PublicDeclinedCard.vue'
 import PublicFlowProgress from '../../../components/invitation/PublicFlowProgress.vue'
+import PublicResumeNotice from '../../../components/invitation/PublicResumeNotice.vue'
 import PublicWaitingCard from '../../../components/invitation/PublicWaitingCard.vue'
 import FinalPlanCard from '../../../components/planning/FinalPlanCard.vue'
 import PlanOptionSelector from '../../../components/planning/PlanOptionSelector.vue'
@@ -30,8 +31,11 @@ import {
   canChangeDeclinedInvitationResponse,
   getPublicFlowTransitionKey,
   getPublicInvitationStage,
+  getPublicResumeNotice,
   isPublicResponseStage,
+  shouldRefreshPublicSnapshotOnResume,
   type PublicInvitationStage,
+  type PublicResumeNotice as PublicResumeNoticeData,
 } from '../../../utils/publicFlow'
 import { getInvitationScreenByType } from '../../../utils/screens'
 import {
@@ -69,9 +73,13 @@ const waitingRefreshError = ref('')
 const showAcceptanceTransition = ref(false)
 const announceFinalPlan = ref(false)
 const announceFinalPlanOnNextSnapshot = ref(false)
+const resumeNotice = ref<PublicResumeNoticeData | null>(null)
+const resumeRefreshError = ref('')
 const stagePanelRef = ref<HTMLElement | null>(null)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const { currentTime, refreshCurrentTime, synchronizeServerTime } = useExpiryClock()
+let lastSnapshotReceivedAt: number | null = null
+let resumeRefreshInFlight = false
 const invitationScreen = computed(() => (
   getInvitationScreenByType(invitation.value?.screens ?? [], 'invitation')
 ))
@@ -129,6 +137,20 @@ const selectedActivityOption = computed(() => (
 const continueDisabled = computed(() => (
   responseSaveState.value !== 'saved'
   || invitation.value?.response_status !== 'accepted'
+))
+const hasUnsavedPublicChoice = computed(() => (
+  responseSaveState.value === 'saving'
+  || selectionSaveState.value === 'saving'
+  || activitySelectionSaveState.value === 'saving'
+  || (
+    activeStage.value === 'date_selection'
+    && selectedOptionId.value !== (invitation.value?.selected_option_id ?? null)
+  )
+  || (
+    activeStage.value === 'activity_selection'
+    && selectedActivityOptionId.value
+      !== (invitation.value?.selected_activity_option_id ?? null)
+  )
 ))
 
 useHead({
@@ -193,6 +215,15 @@ function applyPublicInvitationSnapshot(
   announceFinalPlanOnNextSnapshot.value = false
 }
 
+function markSnapshotReceived(): void {
+  lastSnapshotReceivedAt = Date.now()
+  resumeRefreshError.value = ''
+}
+
+function clearResumeNotice(): void {
+  resumeNotice.value = null
+}
+
 function focusActiveStage(): void {
   void nextTick(() => stagePanelRef.value?.focus({ preventScroll: true }))
 }
@@ -223,6 +254,8 @@ async function loadInvitation(): Promise<void> {
     const nextInvitation = await api.getPublicInvitation(invitationId.value)
 
     applyPublicInvitationSnapshot(nextInvitation)
+    resumeNotice.value = getPublicResumeNotice(nextInvitation, currentTime.value)
+    markSnapshotReceived()
     pageState.value = 'ready'
   }
   catch (error: unknown) {
@@ -239,6 +272,7 @@ async function saveResponse(status: FinalInvitationResponseStatus): Promise<void
     return
   }
 
+  clearResumeNotice()
   pendingResponse.value = status
   responseSaveError.value = ''
   responseSaveState.value = 'saving'
@@ -250,6 +284,7 @@ async function saveResponse(status: FinalInvitationResponseStatus): Promise<void
     })
 
     applyPublicInvitationRecord(nextInvitation, true)
+    markSnapshotReceived()
     savedDuringThisVisit.value = true
     responseSaveState.value = 'saved'
 
@@ -322,6 +357,7 @@ async function savePlanSelection(): Promise<void> {
     return
   }
 
+  clearResumeNotice()
   selectionSaveState.value = 'saving'
   selectionSaveError.value = ''
 
@@ -331,6 +367,7 @@ async function savePlanSelection(): Promise<void> {
     })
 
     applyPublicInvitationRecord(nextInvitation, true)
+    markSnapshotReceived()
     focusActiveStage()
   }
   catch (error: unknown) {
@@ -396,6 +433,7 @@ async function saveActivitySelection(): Promise<void> {
     return
   }
 
+  clearResumeNotice()
   activitySelectionSaveState.value = 'saving'
   activitySelectionSaveError.value = ''
 
@@ -405,6 +443,7 @@ async function saveActivitySelection(): Promise<void> {
     })
 
     applyPublicInvitationRecord(nextInvitation, true)
+    markSnapshotReceived()
     focusActiveStage()
   }
   catch (error: unknown) {
@@ -446,6 +485,7 @@ async function refreshWaitingStatus(): Promise<void> {
     const nextInvitation = await api.getPublicInvitation(invitationId.value)
 
     applyPublicInvitationSnapshot(nextInvitation, true)
+    markSnapshotReceived()
     waitingRefreshState.value = 'idle'
     focusActiveStage()
   }
@@ -455,6 +495,51 @@ async function refreshWaitingStatus(): Promise<void> {
     waitingRefreshError.value = parsedError.message
     waitingRefreshState.value = 'error'
   }
+}
+
+async function refreshPublicSnapshotOnResume(force = false): Promise<void> {
+  if (
+    pageState.value !== 'ready'
+    || resumeRefreshInFlight
+    || (!force && hasUnsavedPublicChoice.value)
+    || (!force && !shouldRefreshPublicSnapshotOnResume(lastSnapshotReceivedAt))
+  ) {
+    return
+  }
+
+  resumeRefreshInFlight = true
+
+  try {
+    const previousStage = serverStage.value
+    const nextInvitation = await api.getPublicInvitation(invitationId.value)
+
+    applyPublicInvitationSnapshot(nextInvitation, true)
+    markSnapshotReceived()
+
+    if (previousStage !== serverStage.value) {
+      resumeNotice.value = getPublicResumeNotice(nextInvitation, currentTime.value)
+      focusActiveStage()
+    }
+  }
+  catch (error: unknown) {
+    resumeRefreshError.value = parseInvitationApiError(error).message
+  }
+  finally {
+    resumeRefreshInFlight = false
+  }
+}
+
+function refreshWhenPageBecomesVisible(): void {
+  refreshCurrentTime()
+
+  if (document.visibilityState === 'visible') {
+    void refreshPublicSnapshotOnResume()
+  }
+}
+
+function refreshWhenWindowFocuses(): void {
+  refreshCurrentTime()
+  void refreshPublicSnapshotOnResume()
 }
 
 function retryResponseSave(): void {
@@ -472,7 +557,29 @@ function continueToPlanning(): void {
   focusActiveStage()
 }
 
-onMounted(loadInvitation)
+watch(serverStage, (nextStage, previousStage) => {
+  if (
+    pageState.value === 'ready'
+    && nextStage === 'date_selection'
+    && (previousStage === 'activity_selection' || previousStage === 'awaiting_confirmation')
+    && invitation.value
+  ) {
+    applyPersistedPlanSelection(invitation.value)
+    resumeNotice.value = getPublicResumeNotice(invitation.value, currentTime.value)
+    focusActiveStage()
+  }
+})
+
+onMounted(() => {
+  void loadInvitation()
+  document.addEventListener('visibilitychange', refreshWhenPageBecomesVisible)
+  window.addEventListener('focus', refreshWhenWindowFocuses)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', refreshWhenPageBecomesVisible)
+  window.removeEventListener('focus', refreshWhenWindowFocuses)
+})
 </script>
 
 <template>
@@ -511,6 +618,19 @@ onMounted(loadInvitation)
           <p>Тебе пришло личное приглашение</p>
           <h1 id="invite-page-title">{{ invitation.recipient_name }}, это для тебя</h1>
         </header>
+
+        <PublicResumeNotice
+          v-if="resumeNotice"
+          :notice="resumeNotice"
+          @dismiss="clearResumeNotice"
+        />
+
+        <div v-if="resumeRefreshError" class="public-resume-refresh-error" role="alert">
+          <span>{{ resumeRefreshError }}</span>
+          <button type="button" @click="refreshPublicSnapshotOnResume(true)">
+            Обновить состояние
+          </button>
+        </div>
 
         <PublicFlowProgress
           :has-activity-options="hasActivityOptions"

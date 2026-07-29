@@ -12,7 +12,10 @@ import {
   getPublicFlowSteps,
   getPublicFlowTransitionKey,
   getPublicInvitationStage,
+  getPublicResumeNotice,
   isPublicResponseStage,
+  PUBLIC_RESUME_REFRESH_COOLDOWN_MS,
+  shouldRefreshPublicSnapshotOnResume,
 } from '../utils/publicFlow'
 
 const now = new Date('2030-01-01T10:00:00Z')
@@ -214,5 +217,103 @@ describe('public flow progress', () => {
     expect(isPublicResponseStage('acceptance')).toBe(true)
     expect(isPublicResponseStage('declined')).toBe(false)
     expect(isPublicResponseStage('final')).toBe(false)
+  })
+})
+
+
+describe('public flow restoration', () => {
+  it('does not show a restoration notice for a new pending invitation', () => {
+    expect(getPublicResumeNotice(invitationRecord(), now)).toBeNull()
+  })
+
+  it('restores accepted invitations at the next incomplete step', () => {
+    expect(getPublicResumeNotice(invitationRecord({
+      response_status: 'accepted',
+      responded_at: '2030-01-01T10:05:00Z',
+      plan_options: [futureOption],
+    }), now)).toMatchObject({
+      title: 'Ответ восстановлен',
+      tone: 'info',
+    })
+
+    expect(getPublicResumeNotice(invitationRecord({
+      response_status: 'accepted',
+      responded_at: '2030-01-01T10:05:00Z',
+      plan_options: [futureOption],
+      selected_option_id: futureOption.id,
+      selected_at: '2030-01-01T10:10:00Z',
+      activity_options: [activityOption],
+    }), now)).toMatchObject({
+      title: 'Дата восстановлена',
+      tone: 'info',
+    })
+  })
+
+  it('explains an expired persisted date and whether replacements exist', () => {
+    const withReplacement = getPublicResumeNotice(invitationRecord({
+      response_status: 'accepted',
+      responded_at: '2030-01-01T10:05:00Z',
+      plan_options: [expiredOption, futureOption],
+      selected_option_id: expiredOption.id,
+      selected_at: '2029-12-30T10:00:00Z',
+    }), now)
+
+    expect(withReplacement).toMatchObject({
+      title: 'Выбранная дата больше не актуальна',
+      tone: 'warning',
+    })
+    expect(withReplacement?.description).toContain('Выбери новую актуальную дату')
+
+    const withoutReplacement = getPublicResumeNotice(invitationRecord({
+      response_status: 'accepted',
+      responded_at: '2030-01-01T10:05:00Z',
+      plan_options: [expiredOption],
+      selected_option_id: expiredOption.id,
+      selected_at: '2029-12-30T10:00:00Z',
+    }), now)
+
+    expect(withoutReplacement?.description).toContain('Автору нужно предложить новые даты')
+  })
+
+  it('restores waiting, declined, and confirmed terminal states', () => {
+    expect(getPublicResumeNotice(invitationRecord({
+      response_status: 'accepted',
+      responded_at: '2030-01-01T10:05:00Z',
+      plan_options: [futureOption],
+      selected_option_id: futureOption.id,
+      selected_at: '2030-01-01T10:10:00Z',
+      activity_options: [activityOption],
+      selected_activity_option_id: activityOption.id,
+      activity_selected_at: '2030-01-01T10:15:00Z',
+    }), now)).toMatchObject({
+      title: 'Выбор восстановлен',
+    })
+
+    expect(getPublicResumeNotice(invitationRecord({
+      response_status: 'declined',
+      responded_at: '2030-01-01T10:05:00Z',
+    }), now)).toMatchObject({
+      title: 'Ответ восстановлен',
+    })
+
+    expect(getPublicResumeNotice(invitationRecord({
+      response_status: 'accepted',
+      confirmed_at: confirmedPlan.confirmed_at,
+      confirmed_plan: confirmedPlan,
+    }), now)).toMatchObject({
+      title: 'План восстановлен',
+      tone: 'success',
+    })
+  })
+
+  it('throttles focus and visibility refreshes without blocking an explicit retry', () => {
+    const timestamp = 1_000_000
+
+    expect(shouldRefreshPublicSnapshotOnResume(null, timestamp)).toBe(true)
+    expect(shouldRefreshPublicSnapshotOnResume(timestamp, timestamp + 1_000)).toBe(false)
+    expect(shouldRefreshPublicSnapshotOnResume(
+      timestamp,
+      timestamp + PUBLIC_RESUME_REFRESH_COOLDOWN_MS,
+    )).toBe(true)
   })
 })

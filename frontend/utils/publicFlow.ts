@@ -1,6 +1,11 @@
 import type { InvitationRecord } from '../types/invitation'
 import { findSelectedActivityOption } from './activities'
-import { findUsableSelectedPlanOption } from './planning'
+import {
+  findSelectedPlanOption,
+  findUsableSelectedPlanOption,
+  getSelectablePlanOptions,
+  isPlanOptionExpired,
+} from './planning'
 
 export const PUBLIC_INVITATION_STAGES = [
   'invitation',
@@ -12,13 +17,23 @@ export const PUBLIC_INVITATION_STAGES = [
   'declined',
 ] as const
 
+export const PUBLIC_RESUME_REFRESH_COOLDOWN_MS = 15_000
+
 export type PublicInvitationStage = typeof PUBLIC_INVITATION_STAGES[number]
 export type PublicFlowStepId = 'invitation' | 'date_selection' | 'activity_selection' | 'confirmation'
+export type PublicResumeNoticeTone = 'info' | 'success' | 'warning'
 
 export type PublicFlowStep = {
   icon: string
   id: PublicFlowStepId
   label: string
+}
+
+export type PublicResumeNotice = {
+  description: string
+  icon: string
+  title: string
+  tone: PublicResumeNoticeTone
 }
 
 const PUBLIC_FLOW_STEPS: readonly PublicFlowStep[] = [
@@ -78,6 +93,110 @@ export function getPublicInvitationStage(
   }
 
   return 'awaiting_confirmation'
+}
+
+export function getPublicResumeNotice(
+  invitation: InvitationRecord,
+  now: Date,
+): PublicResumeNotice | null {
+  if (invitation.confirmed_plan || invitation.confirmed_at) {
+    return {
+      description: 'Итоговый план уже подтверждён. Мы сразу открыли сохранённую финальную карточку.',
+      icon: '💞',
+      title: 'План восстановлен',
+      tone: 'success',
+    }
+  }
+
+  if (invitation.response_status === 'declined') {
+    return {
+      description: 'Твой ответ уже сохранён. Дополнительных действий не требуется.',
+      icon: '🌷',
+      title: 'Ответ восстановлен',
+      tone: 'info',
+    }
+  }
+
+  if (invitation.response_status !== 'accepted') {
+    return null
+  }
+
+  const persistedPlanOption = findSelectedPlanOption(
+    invitation.plan_options,
+    invitation.selected_option_id,
+  )
+  const selectedPlanOption = findUsableSelectedPlanOption(
+    invitation.plan_options,
+    invitation.selected_option_id,
+    now,
+  )
+  const persistedSelectionIsUnavailable = Boolean(
+    invitation.selected_option_id
+    && (
+      persistedPlanOption === null
+      || isPlanOptionExpired(persistedPlanOption, now)
+    )
+  )
+
+  if (persistedSelectionIsUnavailable) {
+    const hasFutureOptions = getSelectablePlanOptions(invitation.plan_options, now).length > 0
+
+    return {
+      description: hasFutureOptions
+        ? 'Ранее выбранный вариант уже прошёл или больше недоступен. Выбери новую актуальную дату.'
+        : 'Ранее выбранный вариант уже прошёл. Автору нужно предложить новые даты, прежде чем выбор можно будет продолжить.',
+      icon: '⌛',
+      title: 'Выбранная дата больше не актуальна',
+      tone: 'warning',
+    }
+  }
+
+  if (!selectedPlanOption) {
+    const hasFutureOptions = getSelectablePlanOptions(invitation.plan_options, now).length > 0
+
+    return {
+      description: hasFutureOptions
+        ? 'Согласие уже сохранено. Продолжи с выбора подходящих даты и места.'
+        : 'Согласие уже сохранено. Автор ещё готовит актуальные варианты даты.',
+      icon: '🗓️',
+      title: 'Ответ восстановлен',
+      tone: 'info',
+    }
+  }
+
+  const selectedActivity = findSelectedActivityOption(
+    invitation.activity_options,
+    invitation.selected_activity_option_id,
+  )
+
+  if (invitation.activity_options.length > 0 && !selectedActivity) {
+    return {
+      description: 'Выбранная дата уже сохранена. Осталось выбрать активность.',
+      icon: '✨',
+      title: 'Дата восстановлена',
+      tone: 'info',
+    }
+  }
+
+  return {
+    description: invitation.activity_options.length > 0
+      ? 'Дата и активность уже сохранены. Осталось дождаться окончательного подтверждения автора.'
+      : 'Дата уже сохранена. Осталось дождаться окончательного подтверждения автора.',
+    icon: '💌',
+    title: 'Выбор восстановлен',
+    tone: 'info',
+  }
+}
+
+export function shouldRefreshPublicSnapshotOnResume(
+  lastRefreshAt: number | null,
+  currentTimestamp: number = Date.now(),
+): boolean {
+  if (lastRefreshAt === null) {
+    return true
+  }
+
+  return currentTimestamp - lastRefreshAt >= PUBLIC_RESUME_REFRESH_COOLDOWN_MS
 }
 
 export function getPublicFlowSteps(hasActivityOptions: boolean): PublicFlowStep[] {
