@@ -19,6 +19,7 @@ import type {
 import { findSelectedActivityOption } from '../../../../utils/activities'
 import { buildBuilderPath } from '../../../../utils/builder'
 import {
+  buildPublicationSuccessPath,
   buildPublicInvitationUrl,
   getInvitationCreationModePresentation,
   getInvitationPlanningModePresentation,
@@ -64,7 +65,6 @@ const confirmationConflict = ref(false)
 const confirmationJustCompleted = ref(false)
 const publicationActionState = ref<PublicationActionState>('idle')
 const publicationError = ref('')
-const publicationJustCompleted = ref(false)
 const invitationEditState = ref<InvitationEditSaveState>('idle')
 const invitationEditError = ref('')
 const invitationEditFieldErrors = ref<InvitationValidationErrors>({})
@@ -164,7 +164,6 @@ async function loadManagedInvitation(): Promise<void> {
     confirmationJustCompleted.value = false
     publicationActionState.value = 'idle'
     publicationError.value = ''
-    publicationJustCompleted.value = false
     invitationEditState.value = 'idle'
     invitationEditError.value = ''
     invitationEditFieldErrors.value = {}
@@ -202,14 +201,13 @@ async function publishDraft(): Promise<void> {
 
   publicationActionState.value = 'publishing'
   publicationError.value = ''
-  publicationJustCompleted.value = false
 
   try {
     const nextInvitation = await api.publishInvitation(invitationId.value, token)
 
     applyManagedInvitation(nextInvitation)
     publicationActionState.value = 'idle'
-    publicationJustCompleted.value = true
+    await navigateTo(buildPublicationSuccessPath(invitationId.value, token))
   }
   catch (error: unknown) {
     const parsedError = parseInvitationApiError(error)
@@ -585,14 +583,6 @@ onUnmounted(() => {
               role="alert"
             >
               {{ publicationError }}
-            </p>
-            <p
-              v-else-if="publicationJustCompleted"
-              class="publication-overview__message publication-overview__message--success"
-              role="status"
-              aria-live="polite"
-            >
-              Приглашение опубликовано. Теперь публичную ссылку можно отправлять получателю.
             </p>
           </section>
 
