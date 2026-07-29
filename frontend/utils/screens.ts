@@ -11,6 +11,7 @@ import {
   type InvitationScreenValidationErrors,
 } from '../types/screen'
 import type { BuilderStepNumber } from './builder'
+import { FINAL_TEMPLATE_MAX_LENGTH, normalizeFinalTextTemplate } from './finalTemplates'
 import { isInvitationImageCompatible, isInvitationImageKey } from './invitationImages'
 
 export type InvitationScreenPresentation = {
@@ -68,7 +69,16 @@ const EDITABLE_SCREEN_FIELDS: InvitationScreenEditableField[] = [
   'button_text',
   'secondary_button_text',
   'image_key',
+  'template_text',
 ]
+
+const EDITABLE_FIELDS_BY_SCREEN: Record<InvitationScreenType, readonly InvitationScreenEditableField[]> = {
+  invitation: ['title', 'subtitle', 'button_text', 'secondary_button_text', 'image_key'],
+  acceptance: ['title', 'subtitle', 'button_text', 'image_key'],
+  date_selection: ['title', 'subtitle', 'button_text', 'image_key'],
+  activity_selection: ['title', 'subtitle', 'button_text', 'image_key'],
+  final: ['title', 'subtitle', 'image_key', 'template_text'],
+}
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -157,6 +167,19 @@ export function normalizeInvitationScreen(payload: unknown): InvitationScreenRec
     throw new Error('Изображение не подходит для указанного экрана приглашения.')
   }
 
+  const templateText = readStringField(payload, 'template_text')
+  if (payload.screen_type === 'final') {
+    try {
+      normalizeFinalTextTemplate(templateText)
+    }
+    catch {
+      throw new Error('Сервер вернул небезопасный шаблон финального экрана.')
+    }
+  }
+  else if (templateText) {
+    throw new Error('Шаблон финального текста не должен принадлежать другому экрану.')
+  }
+
   return {
     screen_type: payload.screen_type,
     title: readStringField(payload, 'title'),
@@ -164,6 +187,7 @@ export function normalizeInvitationScreen(payload: unknown): InvitationScreenRec
     button_text: readStringField(payload, 'button_text'),
     secondary_button_text: readStringField(payload, 'secondary_button_text'),
     image_key: imageKey,
+    template_text: templateText,
   }
 }
 
@@ -219,6 +243,7 @@ export function createInvitationScreenEditForm(
     button_text: screen.button_text,
     secondary_button_text: screen.secondary_button_text,
     image_key: screen.image_key,
+    template_text: screen.template_text,
   }
 }
 
@@ -231,6 +256,7 @@ export function normalizeInvitationScreenEditForm(
     button_text: form.button_text.trim(),
     secondary_button_text: form.secondary_button_text.trim(),
     image_key: form.image_key,
+    template_text: form.template_text.trim(),
   }
 }
 
@@ -242,9 +268,15 @@ export function validateInvitationScreenEditForm(
   const errors: InvitationScreenValidationErrors = {}
 
   if (!normalized.title) {
-    errors.title = screenType === 'acceptance'
-      ? 'Напиши заголовок экрана после согласия.'
-      : 'Напиши главный вопрос приглашения.'
+    if (screenType === 'acceptance') {
+      errors.title = 'Напиши заголовок экрана после согласия.'
+    }
+    else if (screenType === 'final') {
+      errors.title = 'Напиши заголовок финального экрана.'
+    }
+    else {
+      errors.title = 'Напиши главный вопрос приглашения.'
+    }
   }
   else if (normalized.title.length > INVITATION_SCREEN_TITLE_MAX_LENGTH) {
     errors.title = `Не больше ${INVITATION_SCREEN_TITLE_MAX_LENGTH} символов.`
@@ -254,13 +286,15 @@ export function validateInvitationScreenEditForm(
     errors.subtitle = `Не больше ${INVITATION_SCREEN_SUBTITLE_MAX_LENGTH} символов.`
   }
 
-  if (!normalized.button_text) {
-    errors.button_text = screenType === 'acceptance'
-      ? 'Напиши текст кнопки продолжения.'
-      : 'Напиши текст кнопки согласия.'
-  }
-  else if (normalized.button_text.length > INVITATION_SCREEN_BUTTON_MAX_LENGTH) {
-    errors.button_text = `Не больше ${INVITATION_SCREEN_BUTTON_MAX_LENGTH} символов.`
+  if (screenType !== 'final') {
+    if (!normalized.button_text) {
+      errors.button_text = screenType === 'acceptance'
+        ? 'Напиши текст кнопки продолжения.'
+        : 'Напиши текст кнопки согласия.'
+    }
+    else if (normalized.button_text.length > INVITATION_SCREEN_BUTTON_MAX_LENGTH) {
+      errors.button_text = `Не больше ${INVITATION_SCREEN_BUTTON_MAX_LENGTH} символов.`
+    }
   }
 
   if (screenType === 'invitation') {
@@ -275,9 +309,31 @@ export function validateInvitationScreenEditForm(
   }
 
   if (!isInvitationImageCompatible(normalized.image_key, screenType)) {
-    errors.image_key = screenType === 'acceptance'
-      ? 'Выбери изображение для экрана после согласия.'
-      : 'Выбери изображение для экрана приглашения.'
+    if (screenType === 'acceptance') {
+      errors.image_key = 'Выбери изображение для экрана после согласия.'
+    }
+    else if (screenType === 'final') {
+      errors.image_key = 'Выбери изображение для финального экрана.'
+    }
+    else {
+      errors.image_key = 'Выбери изображение для экрана приглашения.'
+    }
+  }
+
+  if (screenType === 'final') {
+    if (normalized.template_text.length > FINAL_TEMPLATE_MAX_LENGTH) {
+      errors.template_text = `Не больше ${FINAL_TEMPLATE_MAX_LENGTH} символов.`
+    }
+    else {
+      try {
+        normalizeFinalTextTemplate(normalized.template_text)
+      }
+      catch (error: unknown) {
+        errors.template_text = error instanceof Error
+          ? error.message
+          : 'Проверь финальный текст.'
+      }
+    }
   }
 
   return errors
@@ -287,11 +343,7 @@ export function hasInvitationScreenValidationErrors(
   errors: InvitationScreenValidationErrors,
   screenType: InvitationScreenType = 'invitation',
 ): boolean {
-  const fields = screenType === 'invitation'
-    ? EDITABLE_SCREEN_FIELDS
-    : EDITABLE_SCREEN_FIELDS.filter(field => field !== 'secondary_button_text')
-
-  return fields.some(field => Boolean(errors[field]))
+  return EDITABLE_FIELDS_BY_SCREEN[screenType].some(field => Boolean(errors[field]))
 }
 
 export function buildInvitationScreenUpdatePayload(
@@ -307,7 +359,7 @@ export function buildInvitationScreenUpdatePayload(
   if (normalized.subtitle !== screen.subtitle) {
     payload.subtitle = normalized.subtitle
   }
-  if (normalized.button_text !== screen.button_text) {
+  if (screen.screen_type !== 'final' && normalized.button_text !== screen.button_text) {
     payload.button_text = normalized.button_text
   }
   if (
@@ -318,6 +370,12 @@ export function buildInvitationScreenUpdatePayload(
   }
   if (normalized.image_key !== screen.image_key) {
     payload.image_key = normalized.image_key
+  }
+  if (
+    screen.screen_type === 'final'
+    && normalized.template_text !== screen.template_text
+  ) {
+    payload.template_text = normalized.template_text
   }
 
   return payload

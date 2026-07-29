@@ -152,6 +152,7 @@ def test_read_invitation_by_uuid() -> None:
         "selected_option_id": None,
         "selected_at": None,
         "confirmed_at": None,
+        "confirmed_plan": None,
         "activity_options": [],
         "selected_activity_option_id": None,
         "activity_selected_at": None,

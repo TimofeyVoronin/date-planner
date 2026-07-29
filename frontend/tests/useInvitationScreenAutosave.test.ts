@@ -13,6 +13,7 @@ const screenRecord: InvitationScreenRecord = {
   button_text: 'Да! 😍',
   secondary_button_text: 'Нет',
   image_key: 'invitation-default',
+  template_text: '',
 }
 
 const acceptanceScreenRecord: InvitationScreenRecord = {
@@ -22,6 +23,17 @@ const acceptanceScreenRecord: InvitationScreenRecord = {
   button_text: 'Выбрать дату',
   secondary_button_text: '',
   image_key: 'acceptance-default',
+  template_text: '',
+}
+
+const finalScreenRecord: InvitationScreenRecord = {
+  screen_type: 'final',
+  title: 'Договорились 💞',
+  subtitle: 'Осталось дождаться итогового подтверждения плана.',
+  button_text: 'Посмотреть план',
+  secondary_button_text: '',
+  image_key: 'final-default',
+  template_text: '{recipient}, жду тебя {date} в {time}. Встречаемся в {place}, а дальше нас ждёт {activity} 💘',
 }
 
 function savedScreen(payload: InvitationScreenUpdatePayload): InvitationScreenRecord {
@@ -138,6 +150,49 @@ describe('invitation screen autosave', () => {
     })
     expect(autosave.fieldErrors.value.secondary_button_text).toBeUndefined()
     expect(autosave.status.value).toBe('saved')
+    scope.stop()
+  })
+
+  it('autosaves final presentation and safe template without an action button', async () => {
+    const save = vi.fn(async (payload: InvitationScreenUpdatePayload) => ({
+      ...finalScreenRecord,
+      ...payload,
+    }))
+    const scope = effectScope()
+    const autosave = scope.run(() => useInvitationScreenAutosave({ save }))!
+
+    autosave.resetFromScreen(finalScreenRecord)
+    autosave.form.title = 'До встречи!'
+    autosave.form.button_text = ''
+    autosave.form.image_key = 'final-night'
+    autosave.form.template_text = '{recipient}, план готов: {date}, {time}, {place}, {activity}.'
+
+    await expect(autosave.flush()).resolves.toBe(true)
+    expect(save).toHaveBeenCalledWith({
+      title: 'До встречи!',
+      image_key: 'final-night',
+      template_text: '{recipient}, план готов: {date}, {time}, {place}, {activity}.',
+    })
+    expect(autosave.fieldErrors.value.button_text).toBeUndefined()
+    expect(autosave.status.value).toBe('saved')
+    scope.stop()
+  })
+
+  it('blocks an unsafe final template before making a request', async () => {
+    const save = vi.fn(async (payload: InvitationScreenUpdatePayload) => ({
+      ...finalScreenRecord,
+      ...payload,
+    }))
+    const scope = effectScope()
+    const autosave = scope.run(() => useInvitationScreenAutosave({ save }))!
+
+    autosave.resetFromScreen(finalScreenRecord)
+    autosave.form.template_text = '{author.name}'
+
+    await expect(autosave.flush()).resolves.toBe(false)
+    expect(save).not.toHaveBeenCalled()
+    expect(autosave.fieldErrors.value.template_text).toBeTruthy()
+    expect(autosave.status.value).toBe('error')
     scope.stop()
   })
 

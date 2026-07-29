@@ -1,3 +1,4 @@
+import type { ActivityOptionRecord } from '../types/activity'
 import type { InvitationImageKey } from '../types/invitation-image'
 import type { InvitationScreenRecord } from '../types/screen'
 import {
@@ -5,6 +6,7 @@ import {
   MIN_PLAN_OPTIONS,
   PLAN_OPTION_COMMENT_MAX_LENGTH,
   PLAN_OPTION_PLACE_MAX_LENGTH,
+  type ConfirmedPlanRecord,
   type InvitationPlanOption,
   type InvitationPlanningMode,
   type PlanConfirmationPayload,
@@ -89,6 +91,34 @@ export function getPlanRecoveryPresentation(
       'Исправь даты или предложи новый набор ниже. Сохранение заменит устаревшие варианты '
       + 'и сбросит прежний выбор, чтобы получатель мог выбрать снова.'
     ),
+  }
+}
+
+export function confirmedPlanToOption(plan: ConfirmedPlanRecord): InvitationPlanOption {
+  return {
+    id: plan.option_id,
+    starts_at: plan.starts_at,
+    time_zone: plan.time_zone,
+    place: plan.place,
+    comment: plan.comment,
+    position: 0,
+  }
+}
+
+export function confirmedPlanToActivity(
+  plan: ConfirmedPlanRecord,
+): ActivityOptionRecord | null {
+  if (!plan.activity_option_id) {
+    return null
+  }
+
+  return {
+    id: plan.activity_option_id,
+    title: plan.activity_title,
+    description: plan.activity_description,
+    image_key: plan.activity_image_key,
+    place: plan.activity_place,
+    position: 0,
   }
 }
 
@@ -255,7 +285,14 @@ export function validatePlanOptionDrafts(
   }
 }
 
-export function planDraftsToPayload(options: PlanOptionDraft[]): PlanOptionsPayload | null {
+export function getClientTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+}
+
+export function planDraftsToPayload(
+  options: PlanOptionDraft[],
+  timeZone: string = getClientTimeZone(),
+): PlanOptionsPayload | null {
   const payloadOptions: PlanOptionPayload[] = []
 
   for (const option of options) {
@@ -267,6 +304,7 @@ export function planDraftsToPayload(options: PlanOptionDraft[]): PlanOptionsPayl
 
     payloadOptions.push({
       starts_at: startsAt,
+      time_zone: timeZone,
       place: option.place.trim(),
       comment: option.comment.trim(),
     })
@@ -438,17 +476,42 @@ export function getPlanConfirmationStage(
   return isPlanOptionExpired(selectedOption, now) ? 'expired' : 'ready'
 }
 
-export function formatPlanOptionDate(value: string): string {
+export function formatPlanOptionDate(
+  value: string,
+  timeZone?: string,
+): string {
   const date = new Date(value)
 
   if (Number.isNaN(date.getTime())) {
     return 'Дата не указана'
   }
 
-  return new Intl.DateTimeFormat('ru-RU', {
-    dateStyle: 'long',
-    timeStyle: 'short',
-  }).format(date)
+  const options: Intl.DateTimeFormatOptions = {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }
+  if (timeZone) {
+    options.timeZone = timeZone
+  }
+
+  try {
+    return new Intl.DateTimeFormat('ru-RU', options).format(date)
+  }
+  catch {
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'UTC',
+      timeZoneName: 'short',
+    }).format(date)
+  }
 }
 
 type PlanningErrorRecord = Record<string, unknown>
@@ -510,8 +573,11 @@ export function parsePlanOptionsApiError(error: unknown): PlanOptionsApiError {
 
       const itemErrors: PlanOptionDraftErrors = {}
 
-      if (hasPlanningErrorMessage(item.starts_at)) {
-        itemErrors.startsAt = 'Выбери корректные будущие дату и время.'
+      if (
+        hasPlanningErrorMessage(item.starts_at)
+        || hasPlanningErrorMessage(item.time_zone)
+      ) {
+        itemErrors.startsAt = 'Выбери корректные будущие дату, время и часовой пояс.'
       }
       if (hasPlanningErrorMessage(item.place)) {
         itemErrors.place = `Укажи место длиной до ${PLAN_OPTION_PLACE_MAX_LENGTH} символов.`

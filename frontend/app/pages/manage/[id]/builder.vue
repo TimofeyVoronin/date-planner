@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import ActivityOptionsEditor from '../../../../components/activities/ActivityOptionsEditor.vue'
 import BuilderAcceptanceScreenEditor from '../../../../components/builder/BuilderAcceptanceScreenEditor.vue'
+import BuilderFinalTemplateSummary from '../../../../components/builder/BuilderFinalTemplateSummary.vue'
 import BuilderImageLibrary from '../../../../components/builder/BuilderImageLibrary.vue'
 import BuilderInvitationScreenEditor from '../../../../components/builder/BuilderInvitationScreenEditor.vue'
 import BuilderInvitationStep from '../../../../components/builder/BuilderInvitationStep.vue'
@@ -19,7 +20,10 @@ import type {
   ActivityOptionRecord,
   ActivityOptionsPayload,
 } from '../../../../types/activity'
-import type { BuilderPreviewScreen } from '../../../../types/builder-preview'
+import type {
+  BuilderPreviewScreen,
+  BuilderPreviewScreenConfig,
+} from '../../../../types/builder-preview'
 import type {
   InvitationPlanOption,
   InvitationPlanningMode,
@@ -28,7 +32,6 @@ import type {
 } from '../../../../types/invitation'
 import type { InvitationImageKey } from '../../../../types/invitation-image'
 import type {
-  InvitationScreenEditForm,
   InvitationScreenRecord,
   InvitationScreenType,
 } from '../../../../types/screen'
@@ -114,6 +117,9 @@ const primaryInvitationScreen = computed(() => (
 ))
 const acceptanceInvitationScreen = computed(() => (
   getInvitationScreenByType(screens.value, 'acceptance')
+))
+const finalInvitationScreen = computed(() => (
+  getInvitationScreenByType(screens.value, 'final')
 ))
 const summaryScreens = computed(() => (
   currentStep.value === 1 ? [] : activeScreens.value
@@ -243,12 +249,29 @@ const acceptanceScreenAutosave = useInvitationScreenAutosave({
   },
 })
 
+const finalScreenAutosave = useInvitationScreenAutosave({
+  async save(payload) {
+    const token = takeManagementToken()
+
+    if (!token) {
+      throw { statusCode: 401 }
+    }
+
+    return api.updateFinalScreen(invitationId.value, token, payload)
+  },
+  onSaved: replaceSavedScreen,
+  onAuthorizationError(error) {
+    handleAuthorizationError(error)
+  },
+})
+
 const selectedImageKeys = computed(() => ({
   invitation: invitationScreenAutosave.form.image_key,
   acceptance: acceptanceScreenAutosave.form.image_key,
+  final: finalScreenAutosave.form.image_key,
 }))
 
-const previewScreens = computed<Record<BuilderPreviewScreen, InvitationScreenEditForm> | null>(() => {
+const previewScreens = computed<Record<BuilderPreviewScreen, BuilderPreviewScreenConfig> | null>(() => {
   const dateScreen = getInvitationScreenByType(screens.value, 'date_selection')
   const activityScreen = getInvitationScreenByType(screens.value, 'activity_selection')
   const finalScreen = getInvitationScreenByType(screens.value, 'final')
@@ -264,6 +287,7 @@ const previewScreens = computed<Record<BuilderPreviewScreen, InvitationScreenEdi
       button_text: invitationScreenAutosave.form.button_text,
       secondary_button_text: invitationScreenAutosave.form.secondary_button_text,
       image_key: invitationScreenAutosave.form.image_key,
+      template_text: '',
     },
     acceptance: {
       title: acceptanceScreenAutosave.form.title,
@@ -271,10 +295,19 @@ const previewScreens = computed<Record<BuilderPreviewScreen, InvitationScreenEdi
       button_text: acceptanceScreenAutosave.form.button_text,
       secondary_button_text: '',
       image_key: acceptanceScreenAutosave.form.image_key,
+      template_text: '',
     },
-    date_selection: createInvitationScreenEditForm(dateScreen),
-    activity_selection: createInvitationScreenEditForm(activityScreen),
-    final: createInvitationScreenEditForm(finalScreen),
+    date_selection: {
+      ...createInvitationScreenEditForm(dateScreen),
+      template_text: dateScreen.template_text,
+    },
+    activity_selection: {
+      ...createInvitationScreenEditForm(activityScreen),
+      template_text: activityScreen.template_text,
+    },
+    final: {
+      ...finalScreenAutosave.form,
+    },
   }
 })
 const previewDateOptions = computed(() => (
@@ -322,6 +355,10 @@ const combinedAutosaveStatus = computed(() => {
     }
   }
 
+  if (currentStep.value === 4) {
+    statuses.push(finalScreenAutosave.status.value)
+  }
+
   if (statuses.includes('error')) {
     return 'error' as const
   }
@@ -350,6 +387,10 @@ const hasUnsavedStepChanges = computed(() => (
   || (
     currentStep.value === 3
     && (activityEditorDirty.value || activitySaveState.value === 'saving')
+  )
+  || (
+    currentStep.value === 4
+    && finalScreenAutosave.hasUnsavedChanges.value
   )
 ))
 
@@ -461,6 +502,10 @@ async function flushCurrentStep(requireCompleteStep = false): Promise<boolean> {
     return flushActivityOptions(requireCompleteStep)
   }
 
+  if (currentStep.value === 4) {
+    return finalScreenAutosave.flush()
+  }
+
   return true
 }
 
@@ -551,11 +596,13 @@ async function loadBuilder(): Promise<void> {
 
     const primaryScreen = getInvitationScreenByType(nextScreens, 'invitation')
     const acceptanceScreen = getInvitationScreenByType(nextScreens, 'acceptance')
-    if (!primaryScreen || !acceptanceScreen) {
+    const finalScreen = getInvitationScreenByType(nextScreens, 'final')
+    if (!primaryScreen || !acceptanceScreen || !finalScreen) {
       throw new Error('Сервер не вернул обязательные экраны приглашения.')
     }
     invitationScreenAutosave.resetFromScreen(primaryScreen)
     acceptanceScreenAutosave.resetFromScreen(acceptanceScreen)
+    finalScreenAutosave.resetFromScreen(finalScreen)
     pageState.value = 'ready'
   }
   catch (error: unknown) {
@@ -786,6 +833,11 @@ function selectScreenImage(
 
   if (screenType === 'invitation') {
     invitationScreenAutosave.form.image_key = imageKey
+    return
+  }
+
+  if (screenType === 'final') {
+    finalScreenAutosave.form.image_key = imageKey
   }
 }
 
@@ -856,6 +908,7 @@ onUnmounted(() => {
   autosave.dispose()
   invitationScreenAutosave.dispose()
   acceptanceScreenAutosave.dispose()
+  finalScreenAutosave.dispose()
 })
 </script>
 
@@ -1050,29 +1103,32 @@ onUnmounted(() => {
                 <BuilderScreenConfigSummary :screens="summaryScreens" />
               </template>
 
-              <section v-else class="builder-stage__placeholder" aria-label="Содержимое будущего шага">
-                <p>Каркас шага готов</p>
-                <h3>Что появится здесь в следующих задачах</h3>
-                <BuilderScreenConfigSummary :screens="summaryScreens" />
-                <ul>
-                  <li v-for="feature in activeStep.plannedFeatures" :key="feature">
-                    <span aria-hidden="true">✓</span>
-                    {{ feature }}
-                  </li>
-                </ul>
-                <p class="builder-stage__notice">
-                  Конфигурация экрана уже хранится на сервере. Поля редактирования подключим
-                  отдельными проверяемыми итерациями.
-                </p>
-              </section>
+              <template v-else>
+                <BuilderFinalTemplateSummary
+                  v-if="finalInvitationScreen"
+                  v-model:title="finalScreenAutosave.form.title"
+                  v-model:subtitle="finalScreenAutosave.form.subtitle"
+                  v-model:template-text="finalScreenAutosave.form.template_text"
+                  :status="finalScreenAutosave.status.value"
+                  :error-message="finalScreenAutosave.errorMessage.value"
+                  :field-errors="finalScreenAutosave.fieldErrors.value"
+                  :is-dirty="finalScreenAutosave.isDirty.value"
+                  @retry="finalScreenAutosave.retry()"
+                  @save-now="finalScreenAutosave.flush()"
+                />
+              </template>
 
               <BuilderImageLibrary
                 v-if="currentStep !== 3"
                 :editable-screen-types="currentStep === 1
                   ? ['invitation', 'acceptance']
-                  : []"
+                  : currentStep === 4
+                    ? ['final']
+                    : []"
                 :screen-types="activeScreenTypes"
-                :selected-image-keys="currentStep === 1 ? selectedImageKeys : {}"
+                :selected-image-keys="currentStep === 1 || currentStep === 4
+                  ? selectedImageKeys
+                  : {}"
                 @select-image="selectScreenImage"
               />
             </div>
@@ -1106,7 +1162,7 @@ onUnmounted(() => {
             aria-live="polite"
           >
             <strong>Шаг {{ currentStep }} из {{ BUILDER_STEPS.length }}</strong>
-            <span>{{ currentStep <= 3 ? autosavePresentation.label : 'Позиция сохранена' }}</span>
+            <span>{{ autosavePresentation.label }}</span>
           </div>
           <button
             v-if="nextStep"

@@ -3,8 +3,11 @@ import type { InvitationPlanOption } from '../types/invitation'
 import type { InvitationScreenRecord } from '../types/screen'
 import {
   buildPlanConfirmationPayload,
+  confirmedPlanToActivity,
+  confirmedPlanToOption,
   findSelectedPlanOption,
   findUsableSelectedPlanOption,
+  formatPlanOptionDate,
   getMinimumPlanDateTime,
   getPersistedPlanSelectionState,
   getPlanSelectionOptionState,
@@ -41,6 +44,7 @@ function option(id: string, position: number, startsAt: string): InvitationPlanO
     id,
     position,
     starts_at: startsAt,
+    time_zone: 'Europe/Moscow',
     place: `Место ${id}`,
     comment: '',
   }
@@ -53,6 +57,7 @@ const dateSelectionScreen: InvitationScreenRecord = {
   button_text: 'Подтвердить дату',
   secondary_button_text: '',
   image_key: 'date-sunset',
+  template_text: '',
 }
 
 describe('planning date conversion', () => {
@@ -177,7 +182,7 @@ describe('planning validation and payload', () => {
 
     expect(parsed.formError).toBeNull()
     expect(parsed.optionErrors).toEqual([
-      { startsAt: 'Выбери корректные будущие дату и время.' },
+      { startsAt: 'Выбери корректные будущие дату, время и часовой пояс.' },
       {
         place: 'Укажи место длиной до 200 символов.',
         comment: 'Комментарий должен быть не длиннее 500 символов.',
@@ -224,15 +229,17 @@ describe('planning validation and payload', () => {
     expect(planDraftsToPayload([
       { startsAt: '2030-01-01T13:00', place: '  Кафе  ', comment: '  У окна ' },
       futureDrafts[1],
-    ])).toEqual({
+    ], 'Europe/Moscow')).toEqual({
       options: [
         {
           starts_at: new Date(2030, 0, 1, 13, 0).toISOString(),
+          time_zone: 'Europe/Moscow',
           place: 'Кафе',
           comment: 'У окна',
         },
         {
           starts_at: new Date(2030, 0, 2, 18, 30).toISOString(),
+          time_zone: 'Europe/Moscow',
           place: 'Парк',
           comment: 'Встретимся у входа',
         },
@@ -245,16 +252,65 @@ describe('planning validation and payload', () => {
 
     expect(planOptionsPayloadHasExpiredDate({
       options: [
-        { starts_at: now.toISOString(), place: 'Кафе', comment: '' },
-        { starts_at: '2030-01-01T13:00:00Z', place: 'Парк', comment: '' },
+        { starts_at: now.toISOString(), time_zone: 'UTC', place: 'Кафе', comment: '' },
+        { starts_at: '2030-01-01T13:00:00Z', time_zone: 'UTC', place: 'Парк', comment: '' },
       ],
     }, now)).toBe(true)
     expect(planOptionsPayloadHasExpiredDate({
       options: [
-        { starts_at: '2030-01-01T12:00:01Z', place: 'Кафе', comment: '' },
-        { starts_at: '2030-01-01T13:00:00Z', place: 'Парк', comment: '' },
+        { starts_at: '2030-01-01T12:00:01Z', time_zone: 'UTC', place: 'Кафе', comment: '' },
+        { starts_at: '2030-01-01T13:00:00Z', time_zone: 'UTC', place: 'Парк', comment: '' },
       ],
     }, now)).toBe(false)
+  })
+})
+
+
+describe('confirmed final plan snapshot', () => {
+  const plan = {
+    option_id: '11111111-1111-4111-8111-111111111111',
+    activity_option_id: '22222222-2222-4222-8222-222222222222',
+    starts_at: '2030-01-01T15:00:00Z',
+    time_zone: 'Europe/Moscow',
+    place: 'Кафе',
+    comment: 'Столик у окна',
+    activity_title: 'Кино',
+    activity_description: 'Премьера',
+    activity_place: 'Кинотеатр',
+    activity_image_key: 'activity-movie',
+    final_title: 'Договорились',
+    final_subtitle: 'До встречи',
+    final_image_key: 'final-night',
+    final_text: 'Борис, жду тебя 1 января 2030 в 18:00 (Europe/Moscow).',
+    confirmed_at: '2029-12-20T12:00:00Z',
+  }
+
+  it('adapts the immutable API snapshot to shared card details', () => {
+    expect(confirmedPlanToOption(plan)).toEqual({
+      id: plan.option_id,
+      starts_at: plan.starts_at,
+      time_zone: plan.time_zone,
+      place: plan.place,
+      comment: plan.comment,
+      position: 0,
+    })
+    expect(confirmedPlanToActivity(plan)).toEqual({
+      id: plan.activity_option_id,
+      title: plan.activity_title,
+      description: plan.activity_description,
+      image_key: plan.activity_image_key,
+      place: plan.activity_place,
+      position: 0,
+    })
+  })
+
+  it('formats the same instant in the saved plan time zone', () => {
+    expect(formatPlanOptionDate(plan.starts_at, plan.time_zone)).toContain('18:00')
+    expect(formatPlanOptionDate(plan.starts_at, plan.time_zone)).toMatch(/GMT\+3|UTC\+3|Москва|Moscow/i)
+  })
+
+  it('omits activity details when the confirmed snapshot has no activity', () => {
+    expect(confirmedPlanToActivity({ ...plan, activity_option_id: null })).toBeNull()
   })
 })
 

@@ -5267,3 +5267,142 @@ button {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* DPL-501: safe final-text template and rendered message. */
+.final-plan-card > p.final-plan-card__message {
+  max-width: 46ch;
+  margin: 16px auto 0;
+  color: #68495a;
+  font-size: .95rem;
+  font-weight: 700;
+  letter-spacing: normal;
+  line-height: 1.65;
+  text-transform: none;
+  text-wrap: balance;
+  white-space: pre-line;
+}
+
+.builder-mobile-preview__final-text {
+  padding: 11px 12px;
+  margin: 0;
+  color: #674858;
+  border: 1px solid rgb(207 157 178 / 24%);
+  border-radius: 13px;
+  background: rgb(255 255 255 / 72%);
+  font-size: .72rem;
+  font-weight: 700;
+  line-height: 1.55;
+  text-align: left;
+  white-space: pre-line;
+}
+
+
+/* DPL-502: editable final-screen presentation and real confirmed-plan artwork. */
+.builder-final-editor__template-field textarea {
+  min-height: 168px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  line-height: 1.6;
+}
+
+.builder-final-editor__variables {
+  display: grid;
+  padding: 15px;
+  gap: 10px;
+  border: 1px solid #ead1dc;
+  border-radius: 16px;
+  background: #fff9fc;
+}
+
+.builder-final-editor__variables > strong,
+.builder-final-editor__variables > p {
+  margin: 0;
+}
+
+.builder-final-editor__variables > strong {
+  color: #5b3447;
+  font-size: .8rem;
+}
+
+.builder-final-editor__variables > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.builder-final-editor__variables button {
+  padding: 7px 10px;
+  color: #7c4059;
+  border: 1px solid #e7c6d3;
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+}
+
+.builder-final-editor__variables button:hover {
+  border-color: #cd89a4;
+  background: #fff3f8;
+}
+
+.builder-final-editor__variables button:focus-visible {
+  outline: 3px solid rgb(190 91 128 / 24%);
+  outline-offset: 2px;
+}
+
+.builder-final-editor__variables code {
+  font-size: .74rem;
+  font-weight: 800;
+}
+
+.builder-final-editor__variables > p {
+  color: #826675;
+  font-size: .73rem;
+  line-height: 1.5;
+}
+
+.final-plan-card__image {
+  width: min(100%, 360px);
+  aspect-ratio: 16 / 10;
+  margin: 0 auto 16px;
+  overflow: hidden;
+  border: 5px solid rgb(255 255 255 / 82%);
+  border-radius: 21px;
+  background: #fff;
+  box-shadow: 0 15px 34px rgb(55 130 91 / 12%);
+}
+
+.final-plan-card__image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.final-plan-card > p.final-plan-card__subtitle {
+  max-width: 46ch;
+  margin: 9px auto 0;
+  color: #617a6d;
+  font-size: .82rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.55;
+  text-transform: none;
+  text-wrap: balance;
+  white-space: pre-line;
+}
+
+@media (max-width: 620px) {
+  .builder-final-editor__variables > div {
+    gap: 6px;
+  }
+
+  .builder-final-editor__variables button {
+    padding: 7px 9px;
+  }
+
+  .final-plan-card__image {
+    border-width: 4px;
+    border-radius: 17px;
+  }
+}

@@ -668,11 +668,9 @@ onUnmounted(() => {
 
             <template v-if="confirmationStage === 'confirmed'">
               <FinalPlanCard
-                v-if="selectedPlanOption && invitation.confirmed_at"
-                :activity="selectedActivityOption"
+                v-if="invitation.confirmed_plan"
                 :announce="confirmationJustCompleted"
-                :confirmed-at="invitation.confirmed_at"
-                :option="selectedPlanOption"
+                :plan="invitation.confirmed_plan"
               />
               <section v-else class="plan-data-error" role="alert">
                 Подтверждённый план не удалось загрузить. Обнови данные страницы.
@@ -771,7 +769,7 @@ onUnmounted(() => {
                   <h2 id="plan-recovery-title">Время выбранного варианта уже прошло</h2>
                   <p v-if="selectedPlanOption">
                     Получатель выбирал «{{ selectedPlanOption.place }}» —
-                    {{ formatPlanOptionDate(selectedPlanOption.starts_at) }}.
+                    {{ formatPlanOptionDate(selectedPlanOption.starts_at, selectedPlanOption.time_zone) }}.
                   </p>
                   <p>{{ planRecoveryPresentation.description }}</p>
                 </div>

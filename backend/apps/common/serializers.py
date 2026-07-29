@@ -9,9 +9,15 @@ from django.utils.timezone import is_naive, now
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.common.final_templates import (
+    FinalTemplateValidationError,
+    normalize_final_text_template,
+    normalize_time_zone,
+)
 from apps.common.models import (
     INVITATION_ANSWER_STATUS_CHOICES,
     ActivityOption,
+    ConfirmedPlan,
     Invitation,
     InvitationPlanOption,
     InvitationScreen,
@@ -41,6 +47,7 @@ class InvitationScreenSerializer(serializers.ModelSerializer):
             "button_text",
             "secondary_button_text",
             "image_key",
+            "template_text",
         )
         read_only_fields = fields
 
@@ -140,6 +147,49 @@ class InvitationPrimaryScreenUpdateSerializer(InvitationScreenUpdateSerializer):
         }
 
 
+class InvitationFinalScreenUpdateSerializer(InvitationScreenUpdateSerializer):
+    """Validate the editable presentation and safe copy of the final screen."""
+
+    editable_fields = (
+        "title",
+        "subtitle",
+        "image_key",
+        "template_text",
+    )
+
+    class Meta:
+        """Expose only recipient-facing final-screen presentation fields."""
+
+        model = InvitationScreen
+        fields = (
+            "title",
+            "subtitle",
+            "image_key",
+            "template_text",
+        )
+        extra_kwargs = {
+            "title": {"min_length": 1, "trim_whitespace": True},
+            "subtitle": {"allow_blank": True, "trim_whitespace": True},
+            "image_key": {
+                "min_length": 1,
+                "allow_blank": False,
+                "trim_whitespace": True,
+            },
+            "template_text": {
+                "min_length": 1,
+                "allow_blank": False,
+                "trim_whitespace": True,
+            },
+        }
+
+    def validate_template_text(self, template_text: str) -> str:
+        """Reject unknown variables, malformed braces, and advanced formatting syntax."""
+        try:
+            return normalize_final_text_template(template_text)
+        except FinalTemplateValidationError as error:
+            raise serializers.ValidationError(str(error)) from error
+
+
 class InvitationPlanOptionSerializer(serializers.ModelSerializer):
     """Expose one persisted planning option in its stable submitted position."""
 
@@ -147,7 +197,7 @@ class InvitationPlanOptionSerializer(serializers.ModelSerializer):
         """Expose only recipient-facing option fields."""
 
         model = InvitationPlanOption
-        fields = ("id", "starts_at", "place", "comment", "position")
+        fields = ("id", "starts_at", "time_zone", "place", "comment", "position")
         read_only_fields = fields
 
 
@@ -159,6 +209,33 @@ class ActivityOptionSerializer(serializers.ModelSerializer):
 
         model = ActivityOption
         fields = ("id", "title", "description", "image_key", "place", "position")
+        read_only_fields = fields
+
+
+class ConfirmedPlanSerializer(serializers.ModelSerializer):
+    """Expose the immutable final card shared by author and recipient."""
+
+    class Meta:
+        """Keep ownership and internal creation metadata out of the public contract."""
+
+        model = ConfirmedPlan
+        fields = (
+            "option_id",
+            "activity_option_id",
+            "starts_at",
+            "time_zone",
+            "place",
+            "comment",
+            "activity_title",
+            "activity_description",
+            "activity_place",
+            "activity_image_key",
+            "final_title",
+            "final_subtitle",
+            "final_image_key",
+            "final_text",
+            "confirmed_at",
+        )
         read_only_fields = fields
 
 
@@ -300,6 +377,9 @@ class InvitationSerializer(serializers.ModelSerializer):
     selected_activity_option_id = serializers.UUIDField(read_only=True, allow_null=True)
     activity_selected_at = serializers.DateTimeField(read_only=True, allow_null=True)
     confirmed_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    confirmed_plan = serializers.SerializerMethodField(
+        help_text="Immutable final-card snapshot created by the confirmation transaction."
+    )
     server_now = serializers.SerializerMethodField(
         help_text="Server time captured while serializing this API response."
     )
@@ -327,6 +407,7 @@ class InvitationSerializer(serializers.ModelSerializer):
             "selected_activity_option_id",
             "activity_selected_at",
             "confirmed_at",
+            "confirmed_plan",
             "server_now",
             "created_at",
             "updated_at",
@@ -345,6 +426,7 @@ class InvitationSerializer(serializers.ModelSerializer):
             "selected_activity_option_id",
             "activity_selected_at",
             "confirmed_at",
+            "confirmed_plan",
             "server_now",
             "created_at",
             "updated_at",
@@ -433,6 +515,15 @@ class InvitationSerializer(serializers.ModelSerializer):
 
         screens = order_invitation_screens(invitation.screens.all())
         return InvitationScreenSerializer(screens, many=True).data
+
+    @extend_schema_field(ConfirmedPlanSerializer(allow_null=True))
+    def get_confirmed_plan(self, invitation: Invitation) -> dict[str, object] | None:
+        """Return the single immutable final-card snapshot after confirmation."""
+        try:
+            snapshot = invitation.confirmed_plan
+        except ConfirmedPlan.DoesNotExist:
+            return None
+        return ConfirmedPlanSerializer(snapshot).data
 
     @extend_schema_field(serializers.DateTimeField())
     def get_server_now(self, invitation: Invitation) -> datetime:
@@ -573,9 +664,15 @@ class AwareFutureDateTimeField(serializers.DateTimeField):
 
 
 class InvitationPlanOptionInputSerializer(serializers.Serializer):
-    """Validate one author-proposed date and place."""
+    """Validate one author-proposed date, time zone, and place."""
 
     starts_at = AwareFutureDateTimeField()
+    time_zone = serializers.CharField(
+        max_length=64,
+        required=False,
+        default="UTC",
+        trim_whitespace=True,
+    )
     place = serializers.CharField(max_length=200, allow_blank=False, trim_whitespace=True)
     comment = serializers.CharField(
         max_length=500,
@@ -584,6 +681,13 @@ class InvitationPlanOptionInputSerializer(serializers.Serializer):
         default="",
         trim_whitespace=True,
     )
+
+    def validate_time_zone(self, time_zone: str) -> str:
+        """Accept only a real IANA time-zone name for deterministic shared display."""
+        try:
+            return normalize_time_zone(time_zone)
+        except FinalTemplateValidationError as error:
+            raise serializers.ValidationError(str(error)) from error
 
 
 class InvitationPlanOptionsUpdateSerializer(serializers.Serializer):

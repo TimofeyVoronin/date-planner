@@ -21,11 +21,17 @@ export type InvitationScreenRecord = {
   button_text: string
   secondary_button_text: string
   image_key: InvitationImageKey
+  template_text: string
 }
 
 export type InvitationScreenEditForm = Pick<
   InvitationScreenRecord,
-  'title' | 'subtitle' | 'button_text' | 'secondary_button_text' | 'image_key'
+  | 'title'
+  | 'subtitle'
+  | 'button_text'
+  | 'secondary_button_text'
+  | 'image_key'
+  | 'template_text'
 >
 
 export type InvitationScreenUpdatePayload = Partial<InvitationScreenEditForm>
@@ -33,3 +39,10 @@ export type InvitationScreenEditableField = keyof InvitationScreenEditForm
 export type InvitationScreenValidationErrors = Partial<
   Record<InvitationScreenEditableField, string>
 >
+
+export type FinalScreenUpdatePayload = Partial<Pick<
+  InvitationScreenRecord,
+  'title' | 'subtitle' | 'image_key' | 'template_text'
+>>
+
+export type FinalTemplateUpdatePayload = Pick<FinalScreenUpdatePayload, 'template_text'>

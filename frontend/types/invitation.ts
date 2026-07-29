@@ -35,6 +35,7 @@ export type InvitationEditSaveState = 'error' | 'idle' | 'saving' | 'success'
 export type InvitationPlanOption = {
   id: string
   starts_at: string
+  time_zone: string
   place: string
   comment: string
   position: number
@@ -42,6 +43,7 @@ export type InvitationPlanOption = {
 
 export type PlanOptionPayload = {
   starts_at: string
+  time_zone: string
   place: string
   comment: string
 }
@@ -60,6 +62,24 @@ export type PlanConfirmationPayload = {
   activity_option_id: string | null
 }
 
+export type ConfirmedPlanRecord = {
+  option_id: string
+  activity_option_id: string | null
+  starts_at: string
+  time_zone: string
+  place: string
+  comment: string
+  activity_title: string
+  activity_description: string
+  activity_place: string
+  activity_image_key: string
+  final_title: string
+  final_subtitle: string
+  final_image_key: string
+  final_text: string
+  confirmed_at: string
+}
+
 export type InvitationRecord = InvitationCreatePayload & {
   planning_mode: InvitationPlanningMode
   id: string
@@ -76,6 +96,7 @@ export type InvitationRecord = InvitationCreatePayload & {
   selected_activity_option_id: string | null
   activity_selected_at: string | null
   confirmed_at: string | null
+  confirmed_plan: ConfirmedPlanRecord | null
   created_at: string
   updated_at: string
 }

@@ -25,6 +25,7 @@ SCREEN_RESPONSE_FIELDS = {
     "button_text",
     "secondary_button_text",
     "image_key",
+    "template_text",
 }
 
 
@@ -73,6 +74,7 @@ def test_extended_invitation_creation_builds_complete_default_screen_set() -> No
         assert screen.button_text == defaults["button_text"]
         assert screen.secondary_button_text == defaults["secondary_button_text"]
         assert screen.image_key == defaults["image_key"]
+        assert screen.template_text == defaults["template_text"]
 
 
 def test_quick_invitation_does_not_create_screen_configurations() -> None:

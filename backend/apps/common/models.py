@@ -172,7 +172,11 @@ class Invitation(models.Model):
 
     @property
     def confirmed_at(self) -> datetime | None:
-        """Expose the final confirmation timestamp stored on the selected option."""
+        """Expose the immutable snapshot timestamp after final confirmation."""
+        confirmed_plan = getattr(self, "confirmed_plan", None)
+        if confirmed_plan is not None:
+            return confirmed_plan.confirmed_at
+
         selected_option = self.selected_plan_option
         return selected_option.confirmed_at if selected_option is not None else None
 
@@ -205,6 +209,7 @@ class InvitationScreen(models.Model):
     button_text = models.CharField(max_length=80, blank=True, default="")
     secondary_button_text = models.CharField(max_length=80, blank=True, default="")
     image_key = models.CharField(max_length=80, blank=True, default="")
+    template_text = models.TextField(max_length=1000, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -228,6 +233,10 @@ class InvitationScreen(models.Model):
                 ),
                 name="invitation_screen_type_valid",
             ),
+            models.CheckConstraint(
+                condition=models.Q(screen_type="final") | models.Q(template_text=""),
+                name="nonfinal_invitation_screen_template_empty",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -247,6 +256,7 @@ class InvitationPlanOption(models.Model):
     starts_at = models.DateTimeField()
     place = models.CharField(max_length=200)
     comment = models.CharField(max_length=500, blank=True, default="")
+    time_zone = models.CharField(max_length=64, default="UTC")
     position = models.PositiveSmallIntegerField()
     selected_at = models.DateTimeField(null=True, blank=True)
     confirmed_at = models.DateTimeField(null=True, blank=True)
@@ -339,6 +349,47 @@ class ActivityOption(models.Model):
     def __str__(self) -> str:
         """Return a concise description for diagnostics and admin tools."""
         return f"{self.invitation_id}: {self.title}"
+
+
+class ConfirmedPlan(models.Model):
+    """Immutable display snapshot created by the final confirmation transaction."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invitation = models.OneToOneField(
+        Invitation,
+        on_delete=models.CASCADE,
+        related_name="confirmed_plan",
+    )
+    option_id = models.UUIDField()
+    activity_option_id = models.UUIDField(null=True, blank=True)
+    starts_at = models.DateTimeField()
+    time_zone = models.CharField(max_length=64, default="UTC")
+    place = models.CharField(max_length=200)
+    comment = models.CharField(max_length=500, blank=True, default="")
+    activity_title = models.CharField(max_length=120, blank=True, default="")
+    activity_description = models.CharField(max_length=500, blank=True, default="")
+    activity_place = models.CharField(max_length=200, blank=True, default="")
+    activity_image_key = models.CharField(max_length=80, blank=True, default="")
+    final_title = models.CharField(max_length=160)
+    final_subtitle = models.CharField(max_length=500, blank=True, default="")
+    final_image_key = models.CharField(max_length=80, blank=True, default="")
+    final_text = models.TextField()
+    confirmed_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Keep a snapshot temporally valid and unique for its invitation."""
+
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(confirmed_at__lt=models.F("starts_at")),
+                name="confirmed_plan_precedes_start",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return a concise immutable-plan identifier."""
+        return f"{self.invitation_id}: confirmed {self.confirmed_at}"
 
 
 INVITATION_RESPONSE_STATUS_CHOICES = Invitation.ResponseStatus.choices
