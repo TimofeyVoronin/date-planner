@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import ActivityOptionSelector from '../../../components/activities/ActivityOptionSelector.vue'
 import InvitationPreviewCard from '../../../components/invitation/InvitationPreviewCard.vue'
+import PublicDeclinedCard from '../../../components/invitation/PublicDeclinedCard.vue'
 import PublicFlowProgress from '../../../components/invitation/PublicFlowProgress.vue'
 import PublicWaitingCard from '../../../components/invitation/PublicWaitingCard.vue'
 import FinalPlanCard from '../../../components/planning/FinalPlanCard.vue'
@@ -26,6 +27,7 @@ import {
   refreshInvitationResponseAfterConflict,
 } from '../../../utils/invitations'
 import {
+  canChangeDeclinedInvitationResponse,
   getPublicFlowTransitionKey,
   getPublicInvitationStage,
   isPublicResponseStage,
@@ -101,6 +103,16 @@ const activeStage = computed<PublicInvitationStage>(() => {
 })
 const stageTransitionKey = computed(() => getPublicFlowTransitionKey(activeStage.value))
 const responseStage = computed(() => isPublicResponseStage(activeStage.value))
+const canChangeDeclinedResponse = computed(() => (
+  invitation.value ? canChangeDeclinedInvitationResponse(invitation.value) : false
+))
+const showResponseSaveStatus = computed(() => (
+  responseStage.value
+  || (
+    activeStage.value === 'declined'
+    && (savedDuringThisVisit.value || responseSaveState.value !== 'saved')
+  )
+))
 const selectedPlanOption = computed(() => (
   findUsableSelectedPlanOption(
     invitation.value?.plan_options ?? [],
@@ -512,52 +524,29 @@ onMounted(loadInvitation)
             class="public-flow-stage"
             tabindex="-1"
           >
-            <template v-if="responseStage">
-              <InvitationPreviewCard
-                :acceptance-screen="acceptanceScreen"
-                :allow-reset="false"
-                :author-name="invitation.author_name"
-                :continue-disabled="continueDisabled"
-                :initial-status="invitation.response_status"
-                :message="invitation.message"
-                :planning-context="true"
-                :recipient-name="invitation.recipient_name"
-                :screen="invitationScreen"
-                @answered="saveResponse"
-                @continue="continueToPlanning"
-              />
+            <InvitationPreviewCard
+              v-if="responseStage"
+              :acceptance-screen="acceptanceScreen"
+              :allow-reset="false"
+              :author-name="invitation.author_name"
+              :continue-disabled="continueDisabled"
+              :direct-decline="true"
+              :initial-status="invitation.response_status"
+              :message="invitation.message"
+              :planning-context="true"
+              :recipient-name="invitation.recipient_name"
+              :screen="invitationScreen"
+              @answered="saveResponse"
+              @continue="continueToPlanning"
+            />
 
-              <div
-                v-if="responseSaveState !== 'idle'"
-                class="response-save-status"
-                :class="`response-save-status--${responseSaveState}`"
-                :role="responseSaveState === 'error' ? 'alert' : 'status'"
-                aria-live="polite"
-              >
-                <span class="response-save-status__icon" aria-hidden="true">
-                  {{ responseSaveState === 'saving' ? '⏳' : responseSaveState === 'saved' ? '✓' : '!' }}
-                </span>
-                <div>
-                  <strong v-if="responseSaveState === 'saving'">Сохраняем твой ответ…</strong>
-                  <strong v-else-if="responseSaveState === 'saved'">
-                    {{ savedDuringThisVisit ? 'Ответ сохранён' : 'Ответ уже сохранён' }}
-                  </strong>
-                  <strong v-else>Не удалось сохранить ответ</strong>
-                  <p v-if="responseSaveState === 'saving'">Не закрывай страницу ещё мгновение.</p>
-                  <p v-else-if="responseSaveState === 'saved'">
-                    Автор приглашения увидит его на своей секретной странице.
-                  </p>
-                  <p v-else>{{ responseSaveError }}</p>
-                </div>
-                <button
-                  v-if="responseSaveState === 'error'"
-                  type="button"
-                  @click="retryResponseSave"
-                >
-                  Повторить
-                </button>
-              </div>
-            </template>
+            <PublicDeclinedCard
+              v-else-if="activeStage === 'declined'"
+              :can-change-decision="canChangeDeclinedResponse"
+              :is-saving="responseSaveState === 'saving'"
+              :recipient-name="invitation.recipient_name"
+              @accept="saveResponse('accepted')"
+            />
 
             <PlanOptionSelector
               v-else-if="activeStage === 'date_selection'"
@@ -607,6 +596,37 @@ onMounted(loadInvitation)
             <section v-else class="plan-data-error" role="alert">
               Текущее состояние приглашения не удалось показать. Обнови страницу и попробуй снова.
             </section>
+
+            <div
+              v-if="showResponseSaveStatus && responseSaveState !== 'idle'"
+              class="response-save-status"
+              :class="`response-save-status--${responseSaveState}`"
+              :role="responseSaveState === 'error' ? 'alert' : 'status'"
+              aria-live="polite"
+            >
+              <span class="response-save-status__icon" aria-hidden="true">
+                {{ responseSaveState === 'saving' ? '⏳' : responseSaveState === 'saved' ? '✓' : '!' }}
+              </span>
+              <div>
+                <strong v-if="responseSaveState === 'saving'">Сохраняем твой ответ…</strong>
+                <strong v-else-if="responseSaveState === 'saved'">
+                  {{ savedDuringThisVisit ? 'Ответ сохранён' : 'Ответ уже сохранён' }}
+                </strong>
+                <strong v-else>Не удалось сохранить ответ</strong>
+                <p v-if="responseSaveState === 'saving'">Не закрывай страницу ещё мгновение.</p>
+                <p v-else-if="responseSaveState === 'saved'">
+                  Автор приглашения увидит его на своей секретной странице.
+                </p>
+                <p v-else>{{ responseSaveError }}</p>
+              </div>
+              <button
+                v-if="responseSaveState === 'error'"
+                type="button"
+                @click="retryResponseSave"
+              >
+                Повторить
+              </button>
+            </div>
           </div>
         </Transition>
 

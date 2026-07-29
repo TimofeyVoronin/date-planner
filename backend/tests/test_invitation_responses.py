@@ -105,6 +105,38 @@ def test_put_can_change_accepted_response_to_declined() -> None:
     assert invitation.responded_at == declined_at
 
 
+def test_put_can_change_declined_response_to_accepted_before_confirmation() -> None:
+    """A recipient may explicitly accept after declining while no final plan exists."""
+    invitation = Invitation.objects.create(**invitation_payload())
+    declined_at = datetime(2026, 7, 22, 12, 0, tzinfo=UTC)
+    accepted_at = datetime(2026, 7, 22, 12, 5, tzinfo=UTC)
+    client = APIClient()
+
+    with patch(
+        "apps.common.views.now",
+        side_effect=(declined_at, accepted_at),
+    ):
+        declined_response = client.put(
+            response_path(invitation),
+            {"response_status": Invitation.ResponseStatus.DECLINED},
+            format="json",
+        )
+        accepted_response = client.put(
+            response_path(invitation),
+            {"response_status": Invitation.ResponseStatus.ACCEPTED},
+            format="json",
+        )
+
+    assert declined_response.status_code == status.HTTP_200_OK
+    assert accepted_response.status_code == status.HTTP_200_OK
+    assert accepted_response.json()["response_status"] == Invitation.ResponseStatus.ACCEPTED
+    assert accepted_response.json()["responded_at"] == api_timestamp(accepted_at)
+
+    invitation.refresh_from_db()
+    assert invitation.response_status == Invitation.ResponseStatus.ACCEPTED
+    assert invitation.responded_at == accepted_at
+
+
 def test_repeating_same_put_is_idempotent() -> None:
     """Retrying an identical answer does not change timestamps or write the row."""
     invitation = Invitation.objects.create(**invitation_payload())

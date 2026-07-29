@@ -20,6 +20,7 @@ type Props = {
   planningContext?: boolean
   previewOnly?: boolean
   continueDisabled?: boolean
+  directDecline?: boolean
   recipientName?: string
   screen?: InvitationScreenEditForm | null
 }
@@ -33,6 +34,7 @@ const props = withDefaults(defineProps<Props>(), {
   planningContext: false,
   previewOnly: false,
   continueDisabled: false,
+  directDecline: false,
   recipientName: '',
   screen: null,
 })
@@ -104,9 +106,12 @@ function chooseAnswer(status: FinalInvitationResponseStatus): void {
     return
   }
 
-  answer.value = status
+  if (!(props.directDecline && status === 'declined')) {
+    answer.value = status
+    focusResult()
+  }
+
   emit('answered', status)
-  focusResult()
 }
 
 function acceptInvitation(): void {
@@ -126,7 +131,7 @@ function continuePlanning(): void {
 }
 
 function handleNoPointerEnter(event: PointerEvent): void {
-  if (props.previewOnly) {
+  if (props.previewOnly || props.directDecline) {
     return
   }
 
@@ -149,6 +154,11 @@ function offerSecondChanceOrDecline(): void {
 function handleNoClick(event: MouseEvent): void {
   if (props.previewOnly) {
     event.preventDefault()
+    return
+  }
+
+  if (props.directDecline) {
+    declineInvitation()
     return
   }
 
@@ -287,7 +297,7 @@ watch(
             : secondChance
               ? `${noButtonText}, всё же отклонить приглашение`
               : `${noButtonText}, отклонить приглашение`"
-          :aria-describedby="previewOnly ? undefined : runawayHelpId"
+          :aria-describedby="previewOnly || directDecline ? undefined : runawayHelpId"
           :style="noButtonStyle"
           @pointerenter="handleNoPointerEnter"
           @click="handleNoClick"
@@ -295,11 +305,11 @@ watch(
           {{ noButtonText }}
         </button>
 
-        <p v-if="!previewOnly" :id="runawayHelpId" class="sr-only">
+        <p v-if="!previewOnly && !directDecline" :id="runawayHelpId" class="sr-only">
           Для мыши и сенсорного экрана кнопка может переместиться до пяти раз.
           После пятой попытки появится повторный вопрос. С клавиатуры ответ доступен сразу.
         </p>
-        <p v-if="!previewOnly" class="sr-only" aria-live="polite">
+        <p v-if="!previewOnly && !directDecline" class="sr-only" aria-live="polite">
           Попыток перемещения: {{ attempts }} из {{ RUNAWAY_ATTEMPT_LIMIT }}.
         </p>
       </div>

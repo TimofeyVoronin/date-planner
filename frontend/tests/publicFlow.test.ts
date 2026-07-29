@@ -6,6 +6,7 @@ import type {
   InvitationRecord,
 } from '../types/invitation'
 import {
+  canChangeDeclinedInvitationResponse,
   getPublicFlowCurrentStepId,
   getPublicFlowCurrentStepIndex,
   getPublicFlowSteps,
@@ -95,6 +96,21 @@ describe('public invitation state machine', () => {
       response_status: 'declined',
       responded_at: '2030-01-01T10:05:00Z',
     }), now)).toBe('declined')
+  })
+
+  it('allows a declined response to change only before final confirmation', () => {
+    const declined = invitationRecord({
+      response_status: 'declined',
+      responded_at: '2030-01-01T10:05:00Z',
+    })
+
+    expect(canChangeDeclinedInvitationResponse(declined)).toBe(true)
+    expect(canChangeDeclinedInvitationResponse({
+      ...declined,
+      confirmed_at: confirmedPlan.confirmed_at,
+      confirmed_plan: confirmedPlan,
+    })).toBe(false)
+    expect(canChangeDeclinedInvitationResponse(invitationRecord())).toBe(false)
   })
 
   it('requires an accepted recipient to choose a usable date', () => {
@@ -193,9 +209,10 @@ describe('public flow progress', () => {
   it('keeps all response presentations in one transition instance', () => {
     expect(getPublicFlowTransitionKey('invitation')).toBe('response')
     expect(getPublicFlowTransitionKey('acceptance')).toBe('response')
-    expect(getPublicFlowTransitionKey('declined')).toBe('response')
+    expect(getPublicFlowTransitionKey('declined')).toBe('declined')
     expect(getPublicFlowTransitionKey('date_selection')).toBe('date_selection')
     expect(isPublicResponseStage('acceptance')).toBe(true)
+    expect(isPublicResponseStage('declined')).toBe(false)
     expect(isPublicResponseStage('final')).toBe(false)
   })
 })

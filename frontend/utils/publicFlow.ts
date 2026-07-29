@@ -31,8 +31,15 @@ const PUBLIC_FLOW_STEPS: readonly PublicFlowStep[] = [
 const RESPONSE_STAGES: readonly PublicInvitationStage[] = [
   'invitation',
   'acceptance',
-  'declined',
 ]
+
+export function canChangeDeclinedInvitationResponse(
+  invitation: InvitationRecord,
+): boolean {
+  return invitation.response_status === 'declined'
+    && invitation.confirmed_at === null
+    && invitation.confirmed_plan === null
+}
 
 export function getPublicInvitationStage(
   invitation: InvitationRecord,
