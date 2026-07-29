@@ -49,3 +49,11 @@ These rules apply to the entire repository.
 - Run `make quality` before completing a task when the environment supports Docker. Otherwise run every available subset and state exactly which checks were and were not run.
 - Do not make Git commits or push changes unless the user explicitly requests it.
 - Avoid unrelated edits and preserve user changes already present in the working tree.
+
+## Production configuration
+
+- Keep local HTTP defaults usable, but make every production transport decision explicit through environment variables.
+- Never enable forwarded HTTPS trust unless the deployment proxy overwrites `X-Forwarded-Proto`; keep DRF's proxy count consistent with the real trusted chain.
+- Keep the synthetic deployment check warning-free in CI. Run the same check with real deployment values and review any platform-specific warnings before release.
+- Treat `.env.production.example` as documentation only. Real secrets and passwords belong in the deployment platform, never in Git or task archives.
+- Introduce HSTS gradually: verify HTTPS first, then increase duration and opt into subdomains or preload only when the whole domain is ready.
