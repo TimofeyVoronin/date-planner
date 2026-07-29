@@ -38,6 +38,7 @@ import {
   type PublicResumeNotice as PublicResumeNoticeData,
 } from '../../../utils/publicFlow'
 import { getInvitationScreenByType } from '../../../utils/screens'
+import { buildPublicInvitationSeoMetadata } from '../../../utils/seo'
 import {
   findUsableSelectedPlanOption,
   getPersistedPlanSelectionState,
@@ -77,6 +78,11 @@ const resumeNotice = ref<PublicResumeNoticeData | null>(null)
 const resumeRefreshError = ref('')
 const stagePanelRef = ref<HTMLElement | null>(null)
 const invitationId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
+const requestUrl = useRequestURL()
+const invitationSeo = computed(() => buildPublicInvitationSeoMetadata(
+  requestUrl,
+  invitationId.value,
+))
 const { currentTime, refreshCurrentTime, synchronizeServerTime } = useExpiryClock()
 let lastSnapshotReceivedAt: number | null = null
 let resumeRefreshInFlight = false
@@ -153,13 +159,35 @@ const hasUnsavedPublicChoice = computed(() => (
   )
 ))
 
-useHead({
-  title: 'Личное приглашение — Date Planner',
+useSeoMeta({
+  title: () => invitationSeo.value.title,
+  description: () => invitationSeo.value.description,
+  robots: 'noindex, nofollow',
+  ogTitle: () => invitationSeo.value.title,
+  ogDescription: () => invitationSeo.value.description,
+  ogType: 'website',
+  ogSiteName: 'Date Planner',
+  ogLocale: 'ru_RU',
+  ogUrl: () => invitationSeo.value.canonicalUrl,
+  ogImage: () => invitationSeo.value.imageUrl,
+  ogImageAlt: () => invitationSeo.value.imageAlt,
+  ogImageWidth: () => invitationSeo.value.imageWidth,
+  ogImageHeight: () => invitationSeo.value.imageHeight,
+  twitterCard: 'summary_large_image',
+  twitterTitle: () => invitationSeo.value.title,
+  twitterDescription: () => invitationSeo.value.description,
+  twitterImage: () => invitationSeo.value.imageUrl,
+  twitterImageAlt: () => invitationSeo.value.imageAlt,
+})
+
+useHead(() => ({
+  link: [
+    { rel: 'canonical', href: invitationSeo.value.canonicalUrl },
+  ],
   meta: [
-    { name: 'robots', content: 'noindex,nofollow' },
     { name: 'referrer', content: 'no-referrer' },
   ],
-})
+}))
 
 function applyPersistedPlanSelection(nextInvitation: InvitationRecord): void {
   const selectionState = getPersistedPlanSelectionState(
