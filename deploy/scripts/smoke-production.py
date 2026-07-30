@@ -555,10 +555,23 @@ def _assert_invitation_metadata(
         "management_token",
         "bearer ",
         "token=",
-        "?",
-        "#",
     ):
         _require(unsafe_fragment not in metadata_text, stage)
+
+    metadata_urls = (
+        *parser.canonical_links,
+        *(
+            value
+            for key in ("og:url", "og:image", "twitter:image")
+            for value in parser.meta.get(key, [])
+        ),
+    )
+    for metadata_url in metadata_urls:
+        try:
+            parsed_url = urlsplit(metadata_url)
+        except ValueError:
+            raise SmokeFailure(stage) from None
+        _require(not parsed_url.query and not parsed_url.fragment, stage)
 
 
 def _future_iso_values(clock: Callable[[], datetime]) -> tuple[str, str]:

@@ -168,6 +168,7 @@ def invitation_metadata_html() -> str:
     image_url = f"{APP_ORIGIN}/images/social/invitation-preview.png"
     meta = {
         "description": SMOKE.META_DESCRIPTION,
+        "theme-color": "#fff3f6",
         "robots": "noindex, nofollow",
         "referrer": "no-referrer",
         "og:title": SMOKE.META_TITLE,
