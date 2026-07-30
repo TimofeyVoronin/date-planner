@@ -1,0 +1,48 @@
+{
+	email {$ACME_EMAIL}
+	log default {
+		output stdout
+		format filter {
+			fields {
+				request delete
+			}
+			wrap json
+		}
+		level INFO
+		exclude http.log.access
+	}
+}
+
+(common_security_headers) {
+	encode zstd gzip
+
+	# Request access logs are intentionally disabled, and runtime error logs
+	# remove Caddy's request object. Capability URLs, query strings, client IPs,
+	# and browser identifiers must not enter Docker logs.
+	header {
+		-Server
+		-X-Powered-By
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Strict-Transport-Security "{$CADDY_HSTS}"
+	}
+}
+
+{$APP_DOMAIN} {
+	import common_security_headers
+	reverse_proxy frontend:3000
+}
+
+{$API_DOMAIN} {
+	import common_security_headers
+
+	handle_path /static/* {
+		root * /srv/backend-static
+		file_server
+	}
+
+	handle {
+		reverse_proxy backend:8000
+	}
+}

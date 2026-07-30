@@ -57,3 +57,14 @@ These rules apply to the entire repository.
 - Keep the synthetic deployment check warning-free in CI. Run the same check with real deployment values and review any platform-specific warnings before release.
 - Treat `.env.production.example` as documentation only. Real secrets and passwords belong in the deployment platform, never in Git or task archives.
 - Introduce HSTS gradually: verify HTTPS first, then increase duration and opt into subdomains or preload only when the whole domain is ready.
+
+## Production Compose runtime
+
+- Keep `docker-compose.yml` development-only and `docker-compose.production.yml` production-only; never add source-code bind mounts to the production stack.
+- Expose only the Caddy edge service on host ports. PostgreSQL, Django, and Nuxt must remain reachable only on the private Compose network.
+- Run migrations, deployment checks, and `collectstatic` in the one-shot `release` service before the backend becomes healthy. Do not run concurrent automatic migration jobs.
+- Keep Caddy certificate data and PostgreSQL data in named persistent volumes. `docker compose down` must not delete those volumes by default.
+- Serve Django files collected under `STATIC_ROOT` through the reverse proxy; do not make Gunicorn serve production static files.
+- Run production application containers without source mounts and as non-root users. Preserve read-only root filesystems for backend and frontend unless a documented runtime need requires otherwise.
+- Keep the app and API on explicit DNS names, derive browser/API origins from those names, and never publish backend or database ports directly.
+- Validate both the rendered production Compose model and the Caddyfile in `make quality`.

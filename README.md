@@ -346,6 +346,14 @@ GitHub Actions выполняет те же категории проверок 
 | `DRF_NUM_PROXIES` | Django REST Framework | Число доверенных reverse proxy; для текущего прямого Compose-подключения `0` |
 | `DRF_THROTTLE_CACHE_LOCATION` | Django | Абсолютный путь к общему cache throttling внутри backend-контейнера |
 | `NUXT_PUBLIC_API_BASE_URL` | Nuxt, браузер | Публичный базовый URL для API-запросов |
+| `APP_DOMAIN` | Production Compose, Caddy | Публичный домен Nuxt-приложения |
+| `API_DOMAIN` | Production Compose, Caddy, Django | Публичный домен API |
+| `ACME_EMAIL` | Caddy | Контакт для автоматического выпуска TLS-сертификатов |
+| `CADDY_HSTS` | Caddy | Начальное значение HSTS для обоих публичных доменов |
+| `DJANGO_STATIC_ROOT` | Django, release-сервис | Каталог, куда `collectstatic` собирает production static files |
+| `GUNICORN_WORKERS` | Gunicorn | Число worker-процессов одного backend-контейнера |
+| `GUNICORN_TIMEOUT` | Gunicorn | Жёсткий таймаут обработки запроса в секундах |
+| `GUNICORN_GRACEFUL_TIMEOUT` | Gunicorn | Время корректного завершения worker при перезапуске |
 
 Файл `.env` исключён из Git. Compose содержит безопасные значения по умолчанию для локальной разработки, но копирование `.env.example` делает конфигурацию явной.
 
@@ -404,20 +412,130 @@ GitHub Actions выполняет те же категории проверок 
 
 ## Ближайшие этапы
 
-Эпик `publication-handoff` завершён задачами DPL-701–DPL-703. Перед началом следующего эпика нужно слить его в `main`, повторно выполнить `make quality` и подготовить новый полный архив проекта.
+Эпик `deployment-readiness` включает отдельный production Compose-стек, fail-closed проверку окружения, разделённые роли PostgreSQL, проверяемые backup/restore, readiness и privacy-safe логи. До закрытия эпика на конкретном окружении остаются внешний мониторинг, общий сетевой cache для горизонтального масштабирования и обязательный post-deploy smoke через реальные HTTPS-домены.
 
-Регистрация на текущем этапе не нужна: секретная management-ссылка подтверждает право просмотра страницы автора. Аккаунты стоит добавлять только тогда, когда появятся личный кабинет, восстановление доступа, список нескольких приглашений одного автора или управление ими с разных устройств. Фоновые очереди и deployment-инфраструктуру также следует добавлять по мере конкретной необходимости.
+Регистрация на текущем этапе не нужна: секретная management-ссылка подтверждает право просмотра страницы автора. Аккаунты стоит добавлять только тогда, когда появятся личный кабинет, восстановление доступа, список нескольких приглашений одного автора или управление ими с разных устройств. Фоновые очереди также следует добавлять только при появлении конкретных фоновых процессов.
 
 ## Production configuration baseline
 
-The `deployment-readiness` epic starts with DPL-801. Production keeps the existing environment-driven settings but now exposes explicit HTTPS, proxy, secure-cookie, HSTS, CSRF-origin, logging, and worker controls. Use `.env.production.example` only as a safe checklist and store real values in the deployment platform.
+Production-настройки Django управляются через окружение: HTTPS redirect, доверие к reverse proxy, secure cookies, HSTS, CSRF origins, уровень логов и число Gunicorn workers. `.env.production.example` служит только безопасным перечнем переменных; реальные пароли и ключи должны находиться только на сервере.
 
-Before deployment, run:
+Проверка синтетической безопасной конфигурации:
 
 ```bash
 make check-deploy
 ```
 
-This command executes Django's deployment checks with a synthetic fully secure configuration and fails on warnings. It is part of `make quality`, so security-setting regressions are checked in CI without changing local HTTP behavior. A real staging or production environment must also run `python manage.py check --deploy` with its actual secret, host names, proxy count, and HTTPS settings, then review every warning before release.
+Команда входит в `make quality` и завершает работу при любом deployment warning. На реальном сервере тот же `python manage.py check --deploy` выполняется однократным release-контейнером уже с настоящими значениями.
 
-Do not enable `DJANGO_TRUST_PROXY_HEADERS` unless the trusted reverse proxy overwrites `X-Forwarded-Proto`. Start HSTS with a short duration, verify that every public endpoint and asset works exclusively over HTTPS, and only then increase the duration or enable subdomain/preload directives. The production example intentionally leaves preload disabled until that decision is made.
+Не включайте доверие к `X-Forwarded-Proto` вне production Compose или другой проверенной proxy-схемы. Начинайте с короткого HSTS, проверяйте все публичные адреса и только затем увеличивайте срок или включайте subdomains/preload.
+
+## Production Docker runtime
+
+Для VPS используется отдельный файл `docker-compose.production.yml`. Локальный `docker-compose.yml` остаётся development-конфигурацией с bind mounts и открытыми портами frontend/backend.
+
+Production-стек содержит:
+
+- PostgreSQL с постоянным томом, отдельными admin/app ролями и приватными настройками логов;
+- одноразовый `preflight`, который отклоняет placeholders, слабые секреты, тестовые домены и несогласованный HSTS до инициализации БД;
+- одноразовый `release`-сервис для deployment checks, миграций и `collectstatic`;
+- Django/Gunicorn без исходников, примонтированных с хоста;
+- собранный Nuxt Node server из `.output/server/index.mjs`;
+- Caddy как единственную точку входа на портах 80/443;
+- автоматический HTTPS для доменов приложения и API;
+- отдельную раздачу Django static files;
+- раздельные внутренние app/data сети и отдельный Compose namespace;
+- liveness и DB-aware readiness, restart policy и постоянные тома сертификатов;
+- ограниченные и сжатые Docker-логи без request URL, query, IP, Referer, User-Agent, токенов и обычных персональных данных.
+
+### Подготовка VPS
+
+Создайте DNS-записи `A` и при необходимости `AAAA`:
+
+```text
+example.com     → IP сервера
+api.example.com → IP сервера
+```
+
+На сервере скопируйте шаблон и заполните реальные значения:
+
+```bash
+cp .env.production.example .env.production
+```
+
+Сгенерировать значения без сторонних утилит можно так:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(64))"
+```
+
+Используйте независимые результаты для `DJANGO_SECRET_KEY`, `POSTGRES_ADMIN_PASSWORD` и `POSTGRES_APP_PASSWORD`. Не оставляйте значения `replace-with-...` и не используйте один пароль для обеих ролей.
+
+До запуска проверьте Compose и Caddyfile на безопасном примере:
+
+```bash
+make check-prod-config
+```
+
+Проверка заполненного файла без запуска БД:
+
+```bash
+make prod-preflight
+```
+
+Запуск production-стека:
+
+```bash
+make prod-up
+make prod-ps
+```
+
+`prod-up` повторно выполняет preflight, собирает образы и ждёт успешных release/healthchecks. При первом запуске Caddy запросит TLS-сертификаты, а `release` проверит непривилегированную роль Django, выполнит миграции и сбор статических файлов. Backend, frontend и PostgreSQL не публикуют свои порты на хосте.
+
+Скрипт инициализации ролей PostgreSQL работает только на пустом томе. Если том уже создавался старой production-конфигурацией, сначала выполните проверенный backup и процедуру миграции ролей из [production runbook](docs/production-runbook.md), иначе fail-closed release остановится.
+
+Проверка после запуска:
+
+```bash
+curl -I https://example.com
+curl -i https://api.example.com/api/v1/ready/
+```
+
+После выпуска обязательно прогоните полный записывающий smoke через настоящие домены. Команда создаёт одну явно помеченную синтетическую запись и доводит её до неизменяемого подтверждённого плана:
+
+```bash
+make prod-smoke \
+  APP_ORIGIN=https://example.com \
+  API_ORIGIN=https://api.example.com
+```
+
+Smoke проверяет HTTPS/security headers, локальное social image, публичные страницы, создание extended-приглашения, management autosave, даты, активности, публикацию, ответ получателя, оба выбора, точное подтверждение и одинаковый final snapshot по обеим capabilities. Management-токен остаётся только в памяти процесса и не выводится.
+
+Просмотр логов и остановка:
+
+```bash
+make prod-logs
+make prod-down
+```
+
+`prod-down` не удаляет PostgreSQL, сертификаты или static volume. Не запускайте `docker compose down -v`, пока намеренно не хотите удалить постоянные данные.
+
+Для повторного ручного release-шага после обновления образов:
+
+```bash
+make prod-release
+```
+
+Создание и обязательная проверка восстановления backup:
+
+```bash
+make prod-backup BACKUP_DIR=/srv/date-planner/backups
+make prod-verify-restore \
+  BACKUP_FILE=/srv/date-planner/backups/date-planner-postgres-YYYYmmddTHHMMSSZ.dump
+```
+
+Named volume не считается backup. Архив и checksum нужно шифровать и отправлять вне Docker-хоста; расписание, retention, RPO/RTO, disaster recovery и безопасная ротация ролей описаны в [production runbook](docs/production-runbook.md).
+
+Access-логи Caddy намеренно выключены. Gunicorn пишет только метод, статус, размер и длительность без request target, а Django формирует фиксированный JSON и подавляет URL framework-request событий. PostgreSQL не пишет SQL statements и bind parameters. Docker `local` driver ограничивает размер и число файлов; централизованный сбор логов должен сохранять эту privacy-модель.
+
+Production Compose рассчитан на один backend-контейнер с несколькими Gunicorn workers. Горизонтальное масштабирование откладывается до подключения общего сетевого cache.

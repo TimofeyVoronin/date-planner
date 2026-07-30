@@ -120,6 +120,8 @@ jobs:
         run: npm ci
       - name: Run ESLint
         run: npm run lint
+      - name: Reject critical production dependency advisories
+        run: npm audit --omit=dev --audit-level=critical
       - name: Check TypeScript
         run: npm run typecheck
       - name: Build frontend
@@ -135,3 +137,74 @@ jobs:
           name: frontend-coverage
           path: frontend/coverage
           if-no-files-found: ignore
+
+  production-runtime:
+    name: Production runtime checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Validate production Compose model
+        run: >-
+          docker compose
+          --env-file .env.production.example
+          -f docker-compose.production.yml
+          config --quiet
+      - name: Validate Caddyfile
+        run: >-
+          docker compose
+          --env-file .env.production.example
+          -f docker-compose.production.yml
+          run --rm --no-deps proxy
+          caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: Build production application images
+        run: >-
+          docker compose
+          --env-file .env.production.example
+          -f docker-compose.production.yml
+          --profile operations
+          build backend frontend smoke
+      - name: Validate production entrypoint scripts
+        run: >-
+          sh -n
+          backend/scripts/release-production.sh
+          backend/scripts/start-production.sh
+          deploy/postgres/init-app-role.sh
+          deploy/scripts/backup-postgres.sh
+          deploy/scripts/verify-postgres-restore.sh
+      - name: Reject unsafe production environment values
+        env:
+          DJANGO_SECRET_KEY: production-ci-secret-with-more-than-fifty-unique-looking-characters
+          POSTGRES_PASSWORD: production-ci-runtime-password-29-characters
+          POSTGRES_ADMIN_PASSWORD: production-ci-admin-password-31-characters
+          POSTGRES_APP_PASSWORD: production-ci-app-password-33-characters
+          POSTGRES_DB: date_planner
+          POSTGRES_ADMIN_USER: date_planner_admin
+          POSTGRES_APP_USER: date_planner_app
+          APP_DOMAIN: dates.company.dev
+          API_DOMAIN: api.dates.company.dev
+          ACME_EMAIL: operations@company.dev
+          DJANGO_SECURE_HSTS_SECONDS: "3600"
+          DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: "False"
+          DJANGO_SECURE_HSTS_PRELOAD: "False"
+          CADDY_HSTS: max-age=3600
+        run: >-
+          docker compose
+          --env-file .env.production.example
+          -f docker-compose.production.yml
+          run --rm --no-deps
+          -e DJANGO_SECRET_KEY
+          -e POSTGRES_PASSWORD
+          -e POSTGRES_ADMIN_PASSWORD
+          -e POSTGRES_APP_PASSWORD
+          -e POSTGRES_DB
+          -e POSTGRES_ADMIN_USER
+          -e POSTGRES_APP_USER
+          -e APP_DOMAIN
+          -e API_DOMAIN
+          -e ACME_EMAIL
+          -e DJANGO_SECURE_HSTS_SECONDS
+          -e DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS
+          -e DJANGO_SECURE_HSTS_PRELOAD
+          -e CADDY_HSTS
+          preflight

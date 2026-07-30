@@ -21,12 +21,14 @@ from apps.common.views import (
     InvitationManagementDetailView,
     InvitationResponseView,
     health_check,
+    readiness_check,
 )
 
 app_name = "common"
 
 urlpatterns = [
     path("health/", health_check, name="health"),
+    path("ready/", readiness_check, name="readiness"),
     path("invitations/", InvitationCreateView.as_view(), name="invitation-create"),
     path(
         "invitations/<uuid:pk>/",

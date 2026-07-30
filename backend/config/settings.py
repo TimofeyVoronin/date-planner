@@ -87,7 +87,8 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", BASE_DIR / "staticfiles"))
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = env_list(
@@ -136,8 +137,9 @@ REST_FRAMEWORK = {
         "invitation_response": os.getenv("DRF_THROTTLE_RESPONSE_RATE", "20/min"),
         "invitation_plan": os.getenv("DRF_THROTTLE_PLAN_RATE", "20/min"),
     },
-    # There is no reverse proxy in the current Compose stack, so client identity
-    # must come from REMOTE_ADDR rather than a spoofable X-Forwarded-For header.
+    # Development has no trusted proxy and therefore defaults to REMOTE_ADDR.
+    # Production Compose sets this to one only behind Caddy's overwritten
+    # X-Forwarded-For chain.
     "NUM_PROXIES": env_int("DRF_NUM_PROXIES", 0, minimum=0),
 }
 
@@ -158,8 +160,7 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {
         "standard": {
-            "format": "{asctime} {levelname} {name}: {message}",
-            "style": "{",
+            "()": "config.logging.PrivacySafeJsonFormatter",
         }
     },
     "handlers": {
