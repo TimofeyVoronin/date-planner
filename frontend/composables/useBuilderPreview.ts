@@ -12,7 +12,7 @@ import {
   getPreviousBuilderPreviewScreen,
 } from '../utils/builderPreview'
 
-export const BUILDER_PREVIEW_NO_BUTTON_ATTEMPT_LIMIT = 3
+export const BUILDER_PREVIEW_NO_BUTTON_ATTEMPT_LIMIT = 4
 
 const BUILDER_PREVIEW_DEFAULT_DATE_ID = 'date-friday'
 

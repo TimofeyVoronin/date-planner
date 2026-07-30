@@ -259,7 +259,7 @@ function handleNoClick(event: MouseEvent): void {
               class="builder-mobile-preview__demo-note"
               role="status"
             >
-              В настоящем приглашении отказ всё равно останется доступным.
+              В настоящем приглашении кнопка остановится перед пятой попыткой.
             </p>
           </div>
 

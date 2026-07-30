@@ -5,8 +5,10 @@ import {
   RUNAWAY_ATTEMPT_LIMIT,
   calculateButtonScales,
   getNextAttemptCount,
+  getNoButtonClickAction,
   hasReachedRunawayLimit,
   normalizeAttemptCount,
+  type NoButtonClickAction,
 } from '../composables/useRunawayButton'
 
 describe('calculateButtonScales', () => {
@@ -15,8 +17,8 @@ describe('calculateButtonScales', () => {
   })
 
   it('changes both scales after every successful attempt', () => {
-    expect(calculateButtonScales(1)).toEqual({ no: 0.92, yes: 1.12 })
-    expect(calculateButtonScales(3)).toEqual({ no: 0.76, yes: 1.36 })
+    expect(calculateButtonScales(1)).toEqual({ no: 0.9, yes: 1.15 })
+    expect(calculateButtonScales(3)).toEqual({ no: 0.7, yes: 1.45 })
   })
 
   it('honours the lower and upper scale limits', () => {
@@ -32,7 +34,7 @@ describe('calculateButtonScales', () => {
 })
 
 describe('attempt counter', () => {
-  it('increments successful attempts up to five', () => {
+  it('increments successful evasions up to four', () => {
     let attempts = 0
 
     for (let index = 0; index < 10; index += 1) {
@@ -49,9 +51,96 @@ describe('attempt counter', () => {
     expect(normalizeAttemptCount(8)).toBe(RUNAWAY_ATTEMPT_LIMIT)
   })
 
-  it('reports the fifth successful attempt as the runaway limit', () => {
-    expect(hasReachedRunawayLimit(4)).toBe(false)
-    expect(hasReachedRunawayLimit(5)).toBe(true)
+  it('stops moving after four evasions so the fifth attempt can decline', () => {
+    expect(RUNAWAY_ATTEMPT_LIMIT).toBe(4)
+    expect(hasReachedRunawayLimit(3)).toBe(false)
+    expect(hasReachedRunawayLimit(4)).toBe(true)
     expect(hasReachedRunawayLimit(100)).toBe(true)
+  })
+})
+
+describe('no-button click policy', () => {
+  it('moves for pointer input while evasions remain', () => {
+    expect(getNoButtonClickAction({
+      canRunAway: true,
+      keyboardActivation: false,
+      prefersReducedMotion: false,
+      runawayEnabled: true,
+      runawayLimitReached: false,
+      secondChance: false,
+    })).toBe('run-away')
+  })
+
+  it('runs away four times and declines on the fifth pointer attempt', () => {
+    let attempts = 0
+    const actions: NoButtonClickAction[] = []
+
+    for (let index = 0; index <= RUNAWAY_ATTEMPT_LIMIT; index += 1) {
+      const action = getNoButtonClickAction({
+        canRunAway: !hasReachedRunawayLimit(attempts),
+        keyboardActivation: false,
+        prefersReducedMotion: false,
+        runawayEnabled: true,
+        runawayLimitReached: hasReachedRunawayLimit(attempts),
+        secondChance: false,
+      })
+
+      actions.push(action)
+
+      if (action === 'run-away') {
+        attempts = getNextAttemptCount(attempts)
+      }
+    }
+
+    expect(actions).toEqual([
+      'run-away',
+      'run-away',
+      'run-away',
+      'run-away',
+      'decline',
+    ])
+    expect(attempts).toBe(RUNAWAY_ATTEMPT_LIMIT)
+  })
+
+  it('keeps keyboard and reduced-motion decline immediately accessible', () => {
+    const baseContext = {
+      canRunAway: true,
+      runawayEnabled: true,
+      runawayLimitReached: false,
+      secondChance: false,
+    }
+
+    expect(getNoButtonClickAction({
+      ...baseContext,
+      keyboardActivation: true,
+      prefersReducedMotion: false,
+    })).toBe('decline')
+    expect(getNoButtonClickAction({
+      ...baseContext,
+      keyboardActivation: false,
+      prefersReducedMotion: true,
+    })).toBe('decline')
+  })
+
+  it('offers a stable second chance if layout cannot move the button', () => {
+    expect(getNoButtonClickAction({
+      canRunAway: false,
+      keyboardActivation: false,
+      prefersReducedMotion: false,
+      runawayEnabled: true,
+      runawayLimitReached: false,
+      secondChance: false,
+    })).toBe('offer-second-chance')
+  })
+
+  it('declines directly when the runaway behavior is disabled', () => {
+    expect(getNoButtonClickAction({
+      canRunAway: true,
+      keyboardActivation: false,
+      prefersReducedMotion: false,
+      runawayEnabled: false,
+      runawayLimitReached: false,
+      secondChance: false,
+    })).toBe('decline')
   })
 })

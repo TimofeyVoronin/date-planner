@@ -8,12 +8,12 @@ import {
   type CSSProperties,
 } from 'vue'
 
-export const RUNAWAY_ATTEMPT_LIMIT = 5
+export const RUNAWAY_ATTEMPT_LIMIT = 4
 export const MIN_NO_BUTTON_SCALE = 0.6
 export const MAX_YES_BUTTON_SCALE = 1.6
 
-const NO_BUTTON_SCALE_STEP = 0.08
-const YES_BUTTON_SCALE_STEP = 0.12
+const NO_BUTTON_SCALE_STEP = 0.1
+const YES_BUTTON_SCALE_STEP = 0.15
 const EDGE_PADDING = 10
 const BUTTON_CLEARANCE = 12
 const BUTTON_GAP = 12
@@ -23,6 +23,17 @@ const DEFAULT_BUTTON_WIDTH = 118
 export type ButtonScales = {
   no: number
   yes: number
+}
+
+export type NoButtonClickAction = 'decline' | 'offer-second-chance' | 'run-away'
+
+export type NoButtonClickContext = {
+  canRunAway: boolean
+  keyboardActivation: boolean
+  prefersReducedMotion: boolean
+  runawayEnabled: boolean
+  runawayLimitReached: boolean
+  secondChance: boolean
 }
 
 type Point = {
@@ -64,6 +75,22 @@ export function calculateButtonScales(attempts: number): ButtonScales {
     no: roundScale(Math.max(MIN_NO_BUTTON_SCALE, 1 - safeAttempts * NO_BUTTON_SCALE_STEP)),
     yes: roundScale(Math.min(MAX_YES_BUTTON_SCALE, 1 + safeAttempts * YES_BUTTON_SCALE_STEP)),
   }
+}
+
+export function getNoButtonClickAction(
+  context: NoButtonClickContext,
+): NoButtonClickAction {
+  if (
+    !context.runawayEnabled
+    || context.runawayLimitReached
+    || context.secondChance
+    || context.keyboardActivation
+    || context.prefersReducedMotion
+  ) {
+    return 'decline'
+  }
+
+  return context.canRunAway ? 'run-away' : 'offer-second-chance'
 }
 
 function rectanglesOverlap(first: Rectangle, second: Rectangle, clearance: number): boolean {

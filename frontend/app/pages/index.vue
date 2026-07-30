@@ -69,7 +69,7 @@ onMounted(async () => {
           <p class="preview-section__step">Шаг 2 · предпросмотр</p>
           <h2 id="preview-title">Вот что увидит тот, кого ты позовёшь</h2>
           <p>Попробуй ответить — кнопка «Нет» немного стесняется.</p>
-          <InvitationPreviewCard />
+          <InvitationPreviewCard runaway-decline />
         </section>
       </div>
 

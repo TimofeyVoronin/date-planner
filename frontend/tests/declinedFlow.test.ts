@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-describe('respectful public decline flow', () => {
+describe('bounded public decline flow', () => {
   it('uses a dedicated neutral decline card and an explicit reversible action', () => {
     const page = readFileSync(
       new URL('../app/pages/invite/[id].vue', import.meta.url),
@@ -21,7 +21,7 @@ describe('respectful public decline flow', () => {
     expect(card).not.toContain('Может всё таки да')
   })
 
-  it('keeps the playful runaway demo out of the real recipient decline action', () => {
+  it('enables four pointer evasions while waiting for the persisted decline', () => {
     const page = readFileSync(
       new URL('../app/pages/invite/[id].vue', import.meta.url),
       'utf8',
@@ -31,9 +31,21 @@ describe('respectful public decline flow', () => {
       'utf8',
     )
 
-    expect(page).toContain(':direct-decline="true"')
-    expect(invitationCard).toContain('if (props.previewOnly || props.directDecline)')
-    expect(invitationCard).toContain("props.directDecline && status === 'declined'")
-    expect(invitationCard).toContain('v-if="!previewOnly && !directDecline"')
+    expect(page).toContain('defer-decline-until-persisted')
+    expect(page).toContain('runaway-decline')
+    expect(page).toContain(`:answers-disabled="responseSaveState === 'saving'"`)
+    expect(page).not.toContain('direct-decline')
+    expect(invitationCard).toContain(
+      "props.deferDeclineUntilPersisted && status === 'declined'",
+    )
+    expect(invitationCard).toContain('runawayEnabled: props.runawayDecline')
+    expect(invitationCard).toContain(
+      'runawayLimitReached: runawayLimitReached.value',
+    )
+    expect(invitationCard).toContain('keyboardActivation: event.detail === 0')
+    expect(invitationCard).toContain('prefersReducedMotion: prefersReducedMotion.value')
+    expect(invitationCard).toContain('{{ RUNAWAY_ATTEMPT_LIMIT }} попытках')
+    expect(invitationCard).toContain('props.previewOnly || props.answersDisabled')
+    expect(invitationCard.match(/:disabled="answersDisabled"/g)).toHaveLength(2)
   })
 })

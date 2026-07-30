@@ -378,6 +378,12 @@ describe('invitation response state', () => {
     expect(getInvitationResponsePresentation('accepted').description).toContain('актуальный этап')
   })
 
+  it('keeps the persisted decline summary neutral', () => {
+    expect(getInvitationResponsePresentation('declined').description).toBe(
+      'Получатель ответил «Нет». Решение сохранено.',
+    )
+  })
+
   it('provides actionable save errors', () => {
     expect(parseInvitationResponseApiError({ status: 400 }).message).toContain('«Да» или «Нет»')
     expect(parseInvitationResponseApiError({ status: 409 }).message).toContain('Обнови страницу')

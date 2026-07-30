@@ -92,7 +92,7 @@ describe('builder interactive preview definitions', () => {
     expect(isBuilderPreviewScreen('manage')).toBe(false)
     expect(getBuilderPreviewNoButtonTransform(-5)).toEqual({ x: 0, y: 0, scale: 1 })
     expect(getBuilderPreviewNoButtonTransform(2)).toEqual({ x: -46, y: 18, scale: .84 })
-    expect(getBuilderPreviewNoButtonTransform(99)).toEqual({ x: 34, y: 30, scale: .76 })
+    expect(getBuilderPreviewNoButtonTransform(99)).toEqual({ x: -36, y: -26, scale: .68 })
   })
 
   it('turns local date drafts into live preview choices', () => {

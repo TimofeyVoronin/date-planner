@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useId, watch } from 'vue'
-import { RUNAWAY_ATTEMPT_LIMIT, useRunawayButton } from '../../composables/useRunawayButton'
+import {
+  RUNAWAY_ATTEMPT_LIMIT,
+  getNoButtonClickAction,
+  useRunawayButton,
+} from '../../composables/useRunawayButton'
 import type {
   FinalInvitationResponseStatus,
   InvitationResponseStatus,
@@ -14,13 +18,15 @@ type Answer = FinalInvitationResponseStatus | null
 type Props = {
   acceptanceScreen?: InvitationScreenEditForm | null
   allowReset?: boolean
+  answersDisabled?: boolean
   authorName?: string
   initialStatus?: InvitationResponseStatus
   message?: string
   planningContext?: boolean
   previewOnly?: boolean
   continueDisabled?: boolean
-  directDecline?: boolean
+  deferDeclineUntilPersisted?: boolean
+  runawayDecline?: boolean
   recipientName?: string
   screen?: InvitationScreenEditForm | null
 }
@@ -28,13 +34,15 @@ type Props = {
 const props = withDefaults(defineProps<Props>(), {
   acceptanceScreen: null,
   allowReset: true,
+  answersDisabled: false,
   authorName: '',
   initialStatus: 'pending',
   message: '',
   planningContext: false,
   previewOnly: false,
   continueDisabled: false,
-  directDecline: false,
+  deferDeclineUntilPersisted: false,
+  runawayDecline: false,
   recipientName: '',
   screen: null,
 })
@@ -96,17 +104,18 @@ const {
   yesButtonRef,
   yesButtonStyle,
 } = useRunawayButton()
+const declineReady = computed(() => secondChance.value || runawayLimitReached.value)
 
 function focusResult(): void {
   void nextTick(() => resultHeadingRef.value?.focus())
 }
 
 function chooseAnswer(status: FinalInvitationResponseStatus): void {
-  if (props.previewOnly) {
+  if (props.previewOnly || props.answersDisabled) {
     return
   }
 
-  if (!(props.directDecline && status === 'declined')) {
+  if (!(props.deferDeclineUntilPersisted && status === 'declined')) {
     answer.value = status
     focusResult()
   }
@@ -131,14 +140,12 @@ function continuePlanning(): void {
 }
 
 function handleNoPointerEnter(event: PointerEvent): void {
-  if (props.previewOnly || props.directDecline) {
+  if (props.previewOnly || props.answersDisabled || !props.runawayDecline) {
     return
   }
 
-  if (event.pointerType === 'mouse' && !secondChance.value) {
-    if (runAway() && runawayLimitReached.value) {
-      secondChance.value = true
-    }
+  if (event.pointerType === 'mouse' && !declineReady.value) {
+    runAway()
   }
 }
 
@@ -152,38 +159,32 @@ function offerSecondChanceOrDecline(): void {
 }
 
 function handleNoClick(event: MouseEvent): void {
-  if (props.previewOnly) {
+  if (props.previewOnly || props.answersDisabled) {
     event.preventDefault()
     return
   }
 
-  if (props.directDecline) {
+  const action = getNoButtonClickAction({
+    canRunAway: canRunAway.value,
+    keyboardActivation: event.detail === 0,
+    prefersReducedMotion: prefersReducedMotion.value,
+    runawayEnabled: props.runawayDecline,
+    runawayLimitReached: runawayLimitReached.value,
+    secondChance: secondChance.value,
+  })
+
+  if (action === 'decline') {
     declineInvitation()
     return
   }
 
-  if (secondChance.value) {
-    declineInvitation()
-    return
-  }
-
-  if (event.detail === 0 || prefersReducedMotion.value) {
-    declineInvitation()
-    return
-  }
-
-  if (!canRunAway.value) {
+  if (action === 'offer-second-chance') {
     offerSecondChanceOrDecline()
     return
   }
 
   if (runAway()) {
     event.preventDefault()
-
-    if (runawayLimitReached.value) {
-      secondChance.value = true
-    }
-
     return
   }
 
@@ -239,10 +240,10 @@ watch(
       <h2
         :id="questionId"
         class="invitation-card__question"
-        :class="{ 'invitation-card__question--second-chance': secondChance }"
+        :class="{ 'invitation-card__question--second-chance': declineReady }"
         aria-live="polite"
       >
-        <span v-if="secondChance && !previewOnly">
+        <span v-if="declineReady && !previewOnly">
           Может всё таки да?
           <span class="invitation-card__sad-emoji" aria-hidden="true">😢</span>
         </span>
@@ -278,6 +279,7 @@ watch(
           ref="yesButtonRef"
           class="invitation-card__yes-button"
           type="button"
+          :disabled="answersDisabled"
           :tabindex="previewOnly ? -1 : undefined"
           :aria-label="previewOnly ? `Предпросмотр кнопки: ${yesButtonText}` : yesButtonText"
           :style="yesButtonStyle"
@@ -291,13 +293,14 @@ watch(
           ref="noButtonRef"
           class="invitation-card__no-button"
           type="button"
+          :disabled="answersDisabled"
           :tabindex="previewOnly ? -1 : undefined"
           :aria-label="previewOnly
             ? `Предпросмотр кнопки: ${noButtonText}`
-            : secondChance
+            : declineReady
               ? `${noButtonText}, всё же отклонить приглашение`
               : `${noButtonText}, отклонить приглашение`"
-          :aria-describedby="previewOnly || directDecline ? undefined : runawayHelpId"
+          :aria-describedby="previewOnly || !runawayDecline ? undefined : runawayHelpId"
           :style="noButtonStyle"
           @pointerenter="handleNoPointerEnter"
           @click="handleNoClick"
@@ -305,12 +308,13 @@ watch(
           {{ noButtonText }}
         </button>
 
-        <p v-if="!previewOnly && !directDecline" :id="runawayHelpId" class="sr-only">
-          Для мыши и сенсорного экрана кнопка может переместиться до пяти раз.
-          После пятой попытки появится повторный вопрос. С клавиатуры ответ доступен сразу.
+        <p v-if="!previewOnly && runawayDecline" :id="runawayHelpId" class="sr-only">
+          Для мыши и сенсорного экрана кнопка переместится при первых
+          {{ RUNAWAY_ATTEMPT_LIMIT }} попытках. На следующей попытке отказ станет доступен.
+          С клавиатуры ответ доступен сразу.
         </p>
-        <p v-if="!previewOnly && !directDecline" class="sr-only" aria-live="polite">
-          Попыток перемещения: {{ attempts }} из {{ RUNAWAY_ATTEMPT_LIMIT }}.
+        <p v-if="!previewOnly && runawayDecline" class="sr-only" aria-live="polite">
+          Перемещений: {{ attempts }} из {{ RUNAWAY_ATTEMPT_LIMIT }}.
         </p>
       </div>
     </div>

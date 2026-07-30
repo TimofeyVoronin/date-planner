@@ -204,6 +204,7 @@ const PREVIEW_NO_BUTTON_TRANSFORMS: readonly BuilderPreviewNoButtonTransform[] =
   { x: 42, y: -12, scale: .92 },
   { x: -46, y: 18, scale: .84 },
   { x: 34, y: 30, scale: .76 },
+  { x: -36, y: -26, scale: .68 },
 ]
 
 export function isBuilderPreviewScreen(value: unknown): value is BuilderPreviewScreen {

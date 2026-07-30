@@ -59,7 +59,7 @@ describe('builder interactive preview state', () => {
 
     expect(preview.noButtonAttempts.value).toBe(BUILDER_PREVIEW_NO_BUTTON_ATTEMPT_LIMIT)
     expect(preview.noButtonLimitReached.value).toBe(true)
-    expect(preview.noButtonTransform.value).toEqual({ x: 34, y: 30, scale: .76 })
+    expect(preview.noButtonTransform.value).toEqual({ x: -36, y: -26, scale: .68 })
   })
 
   it('resets the whole demonstration without changing the selected device', () => {

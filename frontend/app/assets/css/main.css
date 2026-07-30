@@ -420,6 +420,12 @@ button {
   background: #fff7fa;
 }
 
+.invitation-card__yes-button:disabled,
+.invitation-card__no-button:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
 .invitation-card__actions--reduced-motion .invitation-card__yes-button,
 .invitation-card__actions--reduced-motion .invitation-card__no-button {
   transition-duration: .01ms;

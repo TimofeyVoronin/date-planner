@@ -676,13 +676,15 @@ onUnmounted(() => {
               v-if="responseStage"
               :acceptance-screen="acceptanceScreen"
               :allow-reset="false"
+              :answers-disabled="responseSaveState === 'saving'"
               :author-name="invitation.author_name"
               :continue-disabled="continueDisabled"
-              :direct-decline="true"
+              defer-decline-until-persisted
               :initial-status="invitation.response_status"
               :message="invitation.message"
               :planning-context="true"
               :recipient-name="invitation.recipient_name"
+              runaway-decline
               :screen="invitationScreen"
               @answered="saveResponse"
               @continue="continueToPlanning"

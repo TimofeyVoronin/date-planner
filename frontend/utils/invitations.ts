@@ -396,7 +396,7 @@ export function getInvitationResponsePresentation(
       tone: 'declined',
       icon: '🌷',
       label: 'Приглашение отклонено',
-      description: 'Получатель ответил «Нет». Ответ сохранён без давления.',
+      description: 'Получатель ответил «Нет». Решение сохранено.',
     }
   }
 

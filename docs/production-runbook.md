@@ -17,6 +17,22 @@ selection, waiting stage, and final card once in a real browser as well; the
 automated smoke covers the same HTTP lifecycle and server-rendered metadata but
 does not replace browser rendering and interaction checks.
 
+The HTTP smoke does not execute the runaway decline button. For every release
+that changes the recipient response flow, open a separate pending invitation in
+a real browser and verify all of the following:
+
+- with a mouse, the decline button moves on the first four approaches and the
+  fifth click submits the decline;
+- in touch-device emulation, the first four taps move the button and the fifth
+  tap submits the decline;
+- keyboard activation submits the decline immediately;
+- with reduced motion enabled at the operating-system or browser level, the
+  first pointer activation submits the decline without movement;
+- if the fifth request fails, the invitation question remains visible and an
+  explicit retry succeeds after connectivity is restored;
+- after a successful save, reload restores the neutral declined stage and the
+  explicit change-to-acceptance action still works before final confirmation.
+
 Immediately inspect all service logs and confirm that the smoke names, request
 paths, query strings, and capability markers are absent:
 
