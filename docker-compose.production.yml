@@ -1,0 +1,271 @@
+name: date-planner-production
+
+x-backend-environment: &backend-environment
+  POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+  POSTGRES_USER: ${POSTGRES_APP_USER:?Set POSTGRES_APP_USER in .env.production}
+  POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in .env.production}
+  POSTGRES_HOST: db
+  POSTGRES_PORT: "5432"
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env.production}
+  DJANGO_DEBUG: "False"
+  DJANGO_ALLOWED_HOSTS: ${API_DOMAIN:?Set API_DOMAIN in .env.production}
+  CORS_ALLOWED_ORIGINS: https://${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+  CSRF_TRUSTED_ORIGINS: https://${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+  DJANGO_TRUST_PROXY_HEADERS: "True"
+  DJANGO_SECURE_SSL_REDIRECT: "True"
+  DJANGO_SESSION_COOKIE_SECURE: "True"
+  DJANGO_CSRF_COOKIE_SECURE: "True"
+  DJANGO_SECURE_HSTS_SECONDS: ${DJANGO_SECURE_HSTS_SECONDS:-3600}
+  DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: ${DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS:-False}
+  DJANGO_SECURE_HSTS_PRELOAD: ${DJANGO_SECURE_HSTS_PRELOAD:-False}
+  DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+  DJANGO_STATIC_ROOT: /var/lib/date-planner/static
+  GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+  GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-30}
+  GUNICORN_GRACEFUL_TIMEOUT: ${GUNICORN_GRACEFUL_TIMEOUT:-30}
+  DRF_THROTTLE_ANON_RATE: ${DRF_THROTTLE_ANON_RATE:-60/min}
+  DRF_THROTTLE_USER_RATE: ${DRF_THROTTLE_USER_RATE:-120/min}
+  DRF_THROTTLE_CREATE_RATE: ${DRF_THROTTLE_CREATE_RATE:-10/min}
+  DRF_THROTTLE_RESPONSE_RATE: ${DRF_THROTTLE_RESPONSE_RATE:-20/min}
+  DRF_THROTTLE_PLAN_RATE: ${DRF_THROTTLE_PLAN_RATE:-20/min}
+  DRF_NUM_PROXIES: "1"
+  DRF_THROTTLE_CACHE_LOCATION: /tmp/date-planner-throttle-cache
+  API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN in .env.production}
+
+x-production-logging: &production-logging
+  driver: local
+  options:
+    max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
+    max-file: "${DOCKER_LOG_MAX_FILE:-5}"
+    compress: "true"
+
+services:
+  smoke:
+    profiles:
+      - operations
+    image: date-planner-smoke:production
+    build:
+      context: ./deploy
+      dockerfile: smoke/Dockerfile
+    command: ["--help"]
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging: *production-logging
+    networks:
+      - edge
+
+  preflight:
+    image: date-planner-backend:production
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    command: ["python", "-m", "config.production_environment"]
+    environment:
+      <<: *backend-environment
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN in .env.production}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env.production}
+      CADDY_HSTS: ${CADDY_HSTS:-max-age=3600}
+      POSTGRES_ADMIN_USER: ${POSTGRES_ADMIN_USER:?Set POSTGRES_ADMIN_USER in .env.production}
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env.production}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:?Set POSTGRES_APP_USER in .env.production}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in .env.production}
+    network_mode: none
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging: *production-logging
+
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:?Set POSTGRES_ADMIN_USER in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env.production}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:?Set POSTGRES_APP_USER in .env.production}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in .env.production}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    command:
+      - postgres
+      - -c
+      - log_statement=none
+      - -c
+      - log_min_error_statement=panic
+      - -c
+      - log_error_verbosity=terse
+      - -c
+      - log_parameter_max_length_on_error=0
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./deploy/postgres/init-app-role.sh:/docker-entrypoint-initdb.d/10-create-app-role.sh:ro
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *production-logging
+    networks:
+      - data
+
+  release:
+    image: date-planner-backend:production
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    command: ["sh", "/app/scripts/release-production.sh"]
+    environment: *backend-environment
+    volumes:
+      - backend_static:/var/lib/date-planner/static
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging: *production-logging
+    networks:
+      - data
+
+  backend:
+    image: date-planner-backend:production
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    environment: *backend-environment
+    volumes:
+      - backend_static:/var/lib/date-planner/static:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      release:
+        condition: service_completed_successfully
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import os, urllib.request; request = urllib.request.Request('http://127.0.0.1:8000/api/v1/ready/', headers={'Host': os.environ['API_DOMAIN'], 'X-Forwarded-Proto': 'https'}); response = urllib.request.urlopen(request, timeout=3); raise SystemExit(0 if response.status == 200 else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    stop_grace_period: 40s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging: *production-logging
+    networks:
+      - app
+      - data
+
+  frontend:
+    image: date-planner-frontend:production
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+    environment:
+      NODE_ENV: production
+      NITRO_HOST: 0.0.0.0
+      NITRO_PORT: "3000"
+      NUXT_PUBLIC_API_BASE_URL: https://${API_DOMAIN:?Set API_DOMAIN in .env.production}
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging: *production-logging
+    networks:
+      - app
+
+  proxy:
+    image: caddy:2-alpine
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env.production}
+      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN in .env.production}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in .env.production}
+      CADDY_HSTS: ${CADDY_HSTS:-max-age=3600}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/caddy:/etc/caddy:ro
+      - backend_static:/srv/backend-static:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --output-document=/dev/null http://127.0.0.1:2019/config/
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging: *production-logging
+    networks:
+      - edge
+      - app
+
+volumes:
+  postgres_data:
+  backend_static:
+  caddy_data:
+  caddy_config:
+
+networks:
+  edge:
+  app:
+    internal: true
+  data:
+    internal: true

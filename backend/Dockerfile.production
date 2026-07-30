@@ -1,0 +1,40 @@
+FROM python:3.13-slim AS builder
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY pyproject.toml ./
+COPY apps ./apps
+COPY config ./config
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/python -m pip install --upgrade pip \
+    && /opt/venv/bin/python -m pip install .
+
+FROM python:3.13-slim AS runtime
+
+ENV PATH=/opt/venv/bin:$PATH \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN addgroup --system app \
+    && adduser --system --ingroup app app \
+    && mkdir -p /var/lib/date-planner/static \
+    && chown -R app:app /var/lib/date-planner
+
+COPY --from=builder /opt/venv /opt/venv
+COPY --chown=app:app manage.py ./manage.py
+COPY --chown=app:app apps ./apps
+COPY --chown=app:app config ./config
+COPY --chown=app:app scripts ./scripts
+
+RUN chmod +x /app/scripts/start-production.sh /app/scripts/release-production.sh
+
+USER app
+
+EXPOSE 8000
+
+CMD ["sh", "/app/scripts/start-production.sh"]

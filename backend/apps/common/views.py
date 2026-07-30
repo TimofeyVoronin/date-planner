@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 
-from django.db import transaction
+from django.db import DatabaseError, connection, transaction
 from django.utils.timezone import now
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import generics, status
@@ -40,6 +40,44 @@ from apps.common.serializers import (
 @permission_classes([AllowAny])
 def health_check(request: Request) -> Response:
     """Return a lightweight public service health response."""
+    return Response(
+        {
+            "status": "ok",
+            "service": "date-planner-backend",
+        }
+    )
+
+
+@extend_schema(
+    tags=["system"],
+    summary="Check backend readiness",
+    responses={
+        200: HealthResponseSerializer,
+        503: OpenApiResponse(
+            response=HealthResponseSerializer,
+            description="The backend cannot currently reach its database.",
+        ),
+    },
+    auth=[],
+)
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def readiness_check(request: Request) -> Response:
+    """Report whether the backend can serve requests that require PostgreSQL."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except DatabaseError:
+        return Response(
+            {
+                "status": "unavailable",
+                "service": "date-planner-backend",
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
     return Response(
         {
             "status": "ok",
