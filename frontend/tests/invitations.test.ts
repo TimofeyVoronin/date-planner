@@ -127,6 +127,26 @@ describe('invitation form helpers', () => {
     })).toEqual({})
   })
 
+  it('rejects Unicode number characters in both names before sending the payload', () => {
+    const errors = validateInvitationPayload({
+      ...validPayload,
+      author_name: 'Алиса2',
+      recipient_name: 'Борис٢',
+    })
+
+    expect(errors.author_name).toContain('цифры')
+    expect(errors.recipient_name).toContain('цифры')
+    expect(hasInvitationValidationErrors(errors)).toBe(true)
+  })
+
+  it('keeps international letters, spaces, hyphens, and apostrophes valid', () => {
+    expect(validateInvitationPayload({
+      ...validPayload,
+      author_name: 'Анна-Мария O\'Connor',
+      recipient_name: 'D’Angelo 李',
+    })).toEqual({})
+  })
+
   it('recognizes and presents both creation modes', () => {
     expect(isInvitationCreationMode('quick')).toBe(true)
     expect(isInvitationCreationMode('extended')).toBe(true)

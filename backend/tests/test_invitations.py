@@ -233,6 +233,66 @@ def test_create_invitation_rejects_blank_required_fields(field: str) -> None:
     assert Invitation.objects.count() == 0
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("author_name", "Алиса2"),
+        ("author_name", "Алиса٢"),
+        ("author_name", "Алиса２"),
+        ("author_name", "Алиса²"),
+        ("author_name", "Алиса①"),
+        ("author_name", "АлисаⅣ"),
+        ("recipient_name", "Борис2"),
+        ("recipient_name", "Борис٢"),
+        ("recipient_name", "Борис２"),
+        ("recipient_name", "Борис²"),
+        ("recipient_name", "Борис①"),
+        ("recipient_name", "БорисⅣ"),
+    ],
+)
+def test_create_invitation_rejects_unicode_number_characters_in_names(
+    field: str,
+    value: str,
+) -> None:
+    """The API rejects number-bearing names even when client filtering is bypassed."""
+    payload = invitation_payload()
+    payload[field] = value
+
+    response = APIClient().post("/api/v1/invitations/", payload, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()[field] == ["Имя не должно содержать цифры."]
+    assert Invitation.objects.count() == 0
+
+
+@pytest.mark.parametrize(
+    ("author_name", "recipient_name"),
+    [
+        ("Анна-Мария", "O'Connor"),
+        ("D’Angelo", "Марʼяна"),
+        ("李 小龍", "علي"),
+        ("李四", "小林"),
+    ],
+)
+def test_create_invitation_accepts_international_names_and_punctuation(
+    author_name: str,
+    recipient_name: str,
+) -> None:
+    """Digit validation preserves international scripts, hyphens, and apostrophes."""
+    response = APIClient().post(
+        "/api/v1/invitations/",
+        invitation_payload(
+            author_name=author_name,
+            recipient_name=recipient_name,
+        ),
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.json()["author_name"] == author_name
+    assert response.json()["recipient_name"] == recipient_name
+
+
 @pytest.mark.parametrize("payload_message", [None, "", "   "])
 def test_create_invitation_allows_optional_message(payload_message: str | None) -> None:
     """An omitted or blank personal message is normalized to an empty string."""

@@ -19,6 +19,11 @@ import {
   parseInvitationApiError,
   validateInvitationPayload,
 } from '../../utils/invitations'
+import {
+  preventInvitationNameDigitInput,
+  sanitizeInvitationName,
+  sanitizeInvitationNameInput,
+} from '../../utils/invitationNames'
 
 type CopyState = 'idle' | 'copied' | 'failed'
 
@@ -43,6 +48,18 @@ const creationModes = INVITATION_CREATION_MODES
 const selectedModePresentation = computed(() => (
   getInvitationCreationModePresentation(form.creation_mode)
 ))
+const authorName = computed({
+  get: () => form.author_name,
+  set: value => {
+    form.author_name = sanitizeInvitationName(value)
+  },
+})
+const recipientName = computed({
+  get: () => form.recipient_name,
+  set: value => {
+    form.recipient_name = sanitizeInvitationName(value)
+  },
+})
 const copyState = ref<CopyState>('idle')
 
 function fieldDescription(...ids: Array<string | false | undefined>): string | undefined {
@@ -53,6 +70,18 @@ function fieldDescription(...ids: Array<string | false | undefined>): string | u
 
 function focusStatus(): void {
   void nextTick(() => statusHeadingRef.value?.focus())
+}
+
+function handleAuthorNameInput(event: Event): void {
+  sanitizeInvitationNameInput(event, (value) => {
+    form.author_name = value
+  })
+}
+
+function handleRecipientNameInput(event: Event): void {
+  sanitizeInvitationNameInput(event, (value) => {
+    form.recipient_name = value
+  })
 }
 
 async function submitInvitation(): Promise<void> {
@@ -178,7 +207,7 @@ async function copyDraftLink(): Promise<void> {
           <label for="author-name">Твоё имя</label>
           <input
             id="author-name"
-            v-model="form.author_name"
+            v-model="authorName"
             name="author_name"
             type="text"
             autocomplete="name"
@@ -190,8 +219,12 @@ async function copyDraftLink(): Promise<void> {
               'author-name-hint',
               validationErrors.author_name && 'author-name-error',
             )"
+            @beforeinput="preventInvitationNameDigitInput"
+            @input="handleAuthorNameInput"
           >
-          <span id="author-name-hint" class="form-field__hint">Будет видно получателю</span>
+          <span id="author-name-hint" class="form-field__hint">
+            Будет видно получателю. Цифры в имени не используются.
+          </span>
           <span
             v-if="validationErrors.author_name"
             id="author-name-error"
@@ -205,7 +238,7 @@ async function copyDraftLink(): Promise<void> {
           <label for="recipient-name">Имя получателя</label>
           <input
             id="recipient-name"
-            v-model="form.recipient_name"
+            v-model="recipientName"
             name="recipient_name"
             type="text"
             autocomplete="off"
@@ -213,8 +246,16 @@ async function copyDraftLink(): Promise<void> {
             :maxlength="INVITATION_NAME_MAX_LENGTH"
             placeholder="Например, Женя"
             :aria-invalid="Boolean(validationErrors.recipient_name)"
-            :aria-describedby="validationErrors.recipient_name ? 'recipient-name-error' : undefined"
+            :aria-describedby="fieldDescription(
+              'recipient-name-hint',
+              validationErrors.recipient_name && 'recipient-name-error',
+            )"
+            @beforeinput="preventInvitationNameDigitInput"
+            @input="handleRecipientNameInput"
           >
+          <span id="recipient-name-hint" class="form-field__hint">
+            Цифры в имени не используются.
+          </span>
           <span
             v-if="validationErrors.recipient_name"
             id="recipient-name-error"

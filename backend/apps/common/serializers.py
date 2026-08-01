@@ -24,6 +24,9 @@ from apps.common.models import (
 )
 from apps.common.screen_images import is_invitation_screen_image_compatible
 from apps.common.screens import order_invitation_screens
+from apps.common.validators import validate_invitation_name
+
+INVITATION_NAME_VALIDATORS = (validate_invitation_name,)
 
 
 class HealthResponseSerializer(serializers.Serializer):
@@ -432,8 +435,16 @@ class InvitationSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         extra_kwargs = {
-            "author_name": {"min_length": 1, "trim_whitespace": True},
-            "recipient_name": {"min_length": 1, "trim_whitespace": True},
+            "author_name": {
+                "min_length": 1,
+                "trim_whitespace": True,
+                "validators": INVITATION_NAME_VALIDATORS,
+            },
+            "recipient_name": {
+                "min_length": 1,
+                "trim_whitespace": True,
+                "validators": INVITATION_NAME_VALIDATORS,
+            },
             "message": {
                 "required": False,
                 "allow_blank": True,
@@ -554,8 +565,16 @@ class InvitationManagementUpdateSerializer(serializers.ModelSerializer):
             "planning_mode",
         )
         extra_kwargs = {
-            "author_name": {"min_length": 1, "trim_whitespace": True},
-            "recipient_name": {"min_length": 1, "trim_whitespace": True},
+            "author_name": {
+                "min_length": 1,
+                "trim_whitespace": True,
+                "validators": INVITATION_NAME_VALIDATORS,
+            },
+            "recipient_name": {
+                "min_length": 1,
+                "trim_whitespace": True,
+                "validators": INVITATION_NAME_VALIDATORS,
+            },
             "message": {
                 "required": False,
                 "allow_blank": True,

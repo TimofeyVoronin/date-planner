@@ -17,6 +17,7 @@ import {
   type InvitationUpdatePayload,
   type InvitationValidationErrors,
 } from '../types/invitation'
+import { hasInvitationNameDigits } from './invitationNames'
 
 export type InvitationApiError = {
   code: string | null
@@ -155,12 +156,18 @@ export function validateInvitationPayload(
   else if (normalized.author_name.length > INVITATION_NAME_MAX_LENGTH) {
     errors.author_name = `Не больше ${INVITATION_NAME_MAX_LENGTH} символов.`
   }
+  else if (hasInvitationNameDigits(normalized.author_name)) {
+    errors.author_name = 'Имя не должно содержать цифры.'
+  }
 
   if (!normalized.recipient_name) {
     errors.recipient_name = 'Напиши имя того, кого приглашаешь.'
   }
   else if (normalized.recipient_name.length > INVITATION_NAME_MAX_LENGTH) {
     errors.recipient_name = `Не больше ${INVITATION_NAME_MAX_LENGTH} символов.`
+  }
+  else if (hasInvitationNameDigits(normalized.recipient_name)) {
+    errors.recipient_name = 'Имя не должно содержать цифры.'
   }
 
   if (normalized.message.length > INVITATION_MESSAGE_MAX_LENGTH) {

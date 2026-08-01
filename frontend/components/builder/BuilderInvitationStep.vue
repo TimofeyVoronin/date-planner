@@ -9,6 +9,11 @@ import {
   type InvitationValidationErrors,
 } from '../../types/invitation'
 import { getInvitationCreationModePresentation } from '../../utils/invitations'
+import {
+  preventInvitationNameDigitInput,
+  sanitizeInvitationName,
+  sanitizeInvitationNameInput,
+} from '../../utils/invitationNames'
 
 const props = defineProps<{
   errorMessage: string
@@ -22,11 +27,23 @@ const emit = defineEmits<{
   saveNow: []
 }>()
 
-const authorName = defineModel<string>('authorName', { required: true })
-const recipientName = defineModel<string>('recipientName', { required: true })
+const authorNameModel = defineModel<string>('authorName', { required: true })
+const recipientNameModel = defineModel<string>('recipientName', { required: true })
 const message = defineModel<string>('message', { required: true })
 const creationMode = defineModel<InvitationCreationMode>('creationMode', { required: true })
 const creationModes = INVITATION_CREATION_MODES
+const authorName = computed({
+  get: () => authorNameModel.value,
+  set: value => {
+    authorNameModel.value = sanitizeInvitationName(value)
+  },
+})
+const recipientName = computed({
+  get: () => recipientNameModel.value,
+  set: value => {
+    recipientNameModel.value = sanitizeInvitationName(value)
+  },
+})
 const statusPresentation = computed(() => {
   switch (props.status) {
     case 'dirty':
@@ -46,6 +63,18 @@ function fieldDescription(...ids: Array<string | false | undefined>): string | u
   const description = ids.filter((id): id is string => typeof id === 'string').join(' ')
 
   return description || undefined
+}
+
+function handleAuthorNameInput(event: Event): void {
+  sanitizeInvitationNameInput(event, (value) => {
+    authorNameModel.value = value
+  })
+}
+
+function handleRecipientNameInput(event: Event): void {
+  sanitizeInvitationNameInput(event, (value) => {
+    recipientNameModel.value = value
+  })
 }
 </script>
 
@@ -93,9 +122,11 @@ function fieldDescription(...ids: Array<string | false | undefined>): string | u
             'builder-author-name-hint',
             fieldErrors.author_name && 'builder-author-name-error',
           )"
+          @beforeinput="preventInvitationNameDigitInput"
+          @input="handleAuthorNameInput"
         >
         <span id="builder-author-name-hint" class="form-field__hint">
-          Получатель увидит это имя на публичной странице.
+          Получатель увидит это имя на публичной странице. Цифры не используются.
         </span>
         <span
           v-if="fieldErrors.author_name"
@@ -121,9 +152,11 @@ function fieldDescription(...ids: Array<string | false | undefined>): string | u
             'builder-recipient-name-hint',
             fieldErrors.recipient_name && 'builder-recipient-name-error',
           )"
+          @beforeinput="preventInvitationNameDigitInput"
+          @input="handleRecipientNameInput"
         >
         <span id="builder-recipient-name-hint" class="form-field__hint">
-          Имя будет использоваться в тексте приглашения.
+          Имя будет использоваться в тексте приглашения. Цифры не используются.
         </span>
         <span
           v-if="fieldErrors.recipient_name"

@@ -191,6 +191,70 @@ def test_management_update_rejects_invalid_editable_values(
 
 
 @pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("author_name", "Алиса2"),
+        ("author_name", "Алиса٢"),
+        ("author_name", "Алиса２"),
+        ("author_name", "Алиса²"),
+        ("author_name", "Алиса①"),
+        ("author_name", "АлисаⅣ"),
+        ("recipient_name", "Борис2"),
+        ("recipient_name", "Борис٢"),
+        ("recipient_name", "Борис２"),
+        ("recipient_name", "Борис²"),
+        ("recipient_name", "Борис①"),
+        ("recipient_name", "БорисⅣ"),
+    ],
+)
+def test_management_update_rejects_unicode_number_characters_in_names(
+    field: str,
+    value: str,
+) -> None:
+    """A direct management PATCH cannot bypass the browser's name filtering."""
+    client = APIClient()
+    invitation, token = create_invitation(client)
+    original_updated_at = invitation.updated_at
+    original_value = getattr(invitation, field)
+
+    response = client.patch(
+        management_url(invitation),
+        {field: value},
+        format="json",
+        **authorization(token),
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()[field] == ["Имя не должно содержать цифры."]
+    invitation.refresh_from_db()
+    assert getattr(invitation, field) == original_value
+    assert invitation.updated_at == original_updated_at
+
+
+def test_management_update_accepts_international_names_and_punctuation() -> None:
+    """Management edits preserve international names, hyphens, and apostrophes."""
+    client = APIClient()
+    invitation, token = create_invitation(client)
+
+    response = client.patch(
+        management_url(invitation),
+        {
+            "author_name": "Анна-Мария O'Connor",
+            "recipient_name": "D’Angelo 李",
+        },
+        format="json",
+        **authorization(token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["author_name"] == "Анна-Мария O'Connor"
+    assert response.json()["recipient_name"] == "D’Angelo 李"
+    invitation.refresh_from_db()
+    assert invitation.author_name == "Анна-Мария O'Connor"
+    assert invitation.recipient_name == "D’Angelo 李"
+
+
+@pytest.mark.parametrize(
     "field",
     [
         "id",

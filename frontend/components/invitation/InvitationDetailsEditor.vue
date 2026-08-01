@@ -18,6 +18,11 @@ import {
   invitationEditFormHasChanges,
   validateInvitationEditForm,
 } from '../../utils/invitations'
+import {
+  preventInvitationNameDigitInput,
+  sanitizeInvitationName,
+  sanitizeInvitationNameInput,
+} from '../../utils/invitationNames'
 
 const props = defineProps<{
   invitation: InvitationRecord
@@ -40,11 +45,35 @@ const displayedErrors = computed<InvitationValidationErrors>(() => ({
   ...props.serverFieldErrors,
   ...localErrors.value,
 }))
+const authorName = computed({
+  get: () => form.author_name,
+  set: value => {
+    form.author_name = sanitizeInvitationName(value)
+  },
+})
+const recipientName = computed({
+  get: () => form.recipient_name,
+  set: value => {
+    form.recipient_name = sanitizeInvitationName(value)
+  },
+})
 
 function fieldDescription(...ids: Array<string | false | undefined>): string | undefined {
   const description = ids.filter((id): id is string => typeof id === 'string').join(' ')
 
   return description || undefined
+}
+
+function handleAuthorNameInput(event: Event): void {
+  sanitizeInvitationNameInput(event, (value) => {
+    form.author_name = value
+  })
+}
+
+function handleRecipientNameInput(event: Event): void {
+  sanitizeInvitationNameInput(event, (value) => {
+    form.recipient_name = value
+  })
 }
 
 function resetForm(): void {
@@ -143,7 +172,7 @@ watch(
             <label for="managed-author-name">Твоё имя</label>
             <input
               id="managed-author-name"
-              v-model="form.author_name"
+              v-model="authorName"
               name="author_name"
               type="text"
               autocomplete="name"
@@ -154,9 +183,11 @@ watch(
                 'managed-author-name-hint',
                 displayedErrors.author_name && 'managed-author-name-error',
               )"
+              @beforeinput="preventInvitationNameDigitInput"
+              @input="handleAuthorNameInput"
             >
             <span id="managed-author-name-hint" class="form-field__hint">
-              Отображается на публичной странице.
+              Отображается на публичной странице. Цифры в имени не используются.
             </span>
             <span
               v-if="displayedErrors.author_name"
@@ -171,7 +202,7 @@ watch(
             <label for="managed-recipient-name">Имя получателя</label>
             <input
               id="managed-recipient-name"
-              v-model="form.recipient_name"
+              v-model="recipientName"
               name="recipient_name"
               type="text"
               autocomplete="off"
@@ -182,9 +213,11 @@ watch(
                 'managed-recipient-name-hint',
                 displayedErrors.recipient_name && 'managed-recipient-name-error',
               )"
+              @beforeinput="preventInvitationNameDigitInput"
+              @input="handleRecipientNameInput"
             >
             <span id="managed-recipient-name-hint" class="form-field__hint">
-              Используется в тексте приглашения.
+              Используется в тексте приглашения. Цифры в имени не используются.
             </span>
             <span
               v-if="displayedErrors.recipient_name"
